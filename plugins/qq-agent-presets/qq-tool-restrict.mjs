@@ -127,6 +127,11 @@ const LOCAL_EXECUTION_TOOLS = [
   'plugin_manager',
   //   ④ 无人值守的自我调度
   'schedule_create', 'schedule_list', 'schedule_update', 'schedule_delete',
+  // DSH 0.2.1 新增：全局层继承的 working_directory、终端、会话历史检索、插件市场/工作树/等待
+  'working_directory',
+  'terminal_open', 'terminal_send', 'terminal_read', 'terminal_signal', 'terminal_close', 'terminal_list',
+  'session_search', 'session_trace', 'session_event_read', 'session_event_search', 'session_event_trace',
+  'plugin_market', 'create_worktree', 'wait_agent',
   // 已装但当前未进 bundles 的插件（一旦加回就是新口子）
   'dev_mode_set', 'dev_mode_status', 'dev_mode_subagent',
 ]
@@ -196,6 +201,10 @@ export const OPERATOR_DENY_TOOLS = Object.freeze([
   'team_task_create', 'team_task_get', 'team_task_list', 'team_task_update',
   'workflow', 'ralph', 'plugin_manager', 'load_workspace_dependencies',
   'schedule_create', 'schedule_list', 'schedule_update', 'schedule_delete',
+  'working_directory',
+  'terminal_open', 'terminal_send', 'terminal_read', 'terminal_signal', 'terminal_close', 'terminal_list',
+  'session_search', 'session_trace', 'session_event_read', 'session_event_search', 'session_event_trace',
+  'plugin_market', 'create_worktree', 'wait_agent',
   'cordis_inspect_list', 'cordis_inspect_query',
   'list_mcp_resources', 'list_mcp_resource_templates', 'read_mcp_resource',
   'dsh_snapshot', 'dsh_rollback', 'incident_resolved',

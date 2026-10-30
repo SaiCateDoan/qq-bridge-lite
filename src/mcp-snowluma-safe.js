@@ -39,31 +39,12 @@ function getConfig() {
   return loadConfig();
 }
 
-function getAccess() {
-  const c = getConfig();
-  return {
-    allowGroups: (c.allow?.groups ?? []).map(String),
-    allowPrivate: (c.allow?.private ?? []).map(String),
-    denyGroups: (c.deny?.groups ?? []).map(String),
-    denyPrivate: (c.deny?.private ?? []).map(String),
-    allowAllWhenEmpty: c.allowAllWhenEmpty === true
-  };
-}
-
 function getOneBotConfig() {
   const c = getConfig();
   return {
     httpUrl: (c.snowluma?.httpUrl ?? 'http://127.0.0.1:3000').replace(/\/+$/, ''),
     token: c.snowluma?.accessToken ?? ''
   };
-}
-
-// 与 bridge.allowed 保持一致：allow 列表为空时按 allowAllWhenEmpty 放行
-function isAllowed(allowList, denyList, id, allowAllWhenEmpty) {
-  const s = String(id);
-  if (denyList.includes(s)) return false;
-  if (allowList.length > 0) return allowList.includes(s);
-  return allowAllWhenEmpty;
 }
 
 // 兼容模型把单条消息序列化成 JSON 字符串的情况，例如 "\"你好\"" → "你好"。
@@ -284,15 +265,6 @@ async function authorizeRead(key) {
 // 旧只读工具（qq_status 之外的 qq_list_groups / qq_get_group_members / qq_get_group_history）
 // 没有会话令牌，因此**只能在封闭 agent（管理员私聊）里使用**。
 //
-// 这里用「确认是 closed-agent 才放行」的白名单写法，而不是「看到 reserved2 就拒绝」的黑名单写法：
-// 桥接的 /api/status 在「带 agent 令牌」时返回的是最小状态对象（不含 mode 字段），
-// 用 `status?.mode === 'reserved2'` 判断会得到 undefined ⇒ 黑名单判定为假 ⇒ 旧工具被放行，
-// 等于在二代仿真模式下把白名单群名、群成员名单注入模型上下文。
-async function legacyReadToolAllowed() {
-  const status = await agentApi('/api/status');
-  return String(status?.mode ?? '') === 'closed-agent';
-}
-
 const server = new McpServer({ name: 'snowluma-safe', version: '1.0.3' });
 
 // ── 工具开关必须在**注册期**生效，而不是只在校验期 ──────────────────────────
@@ -321,6 +293,7 @@ const TOOL_CONFIG_FLAGS = {
   qq_get_my_recent_messages: 'getMyRecent',
   qq_get_message_detail: 'getMessageDetail',
   qq_get_active_members: 'getActiveMembers',
+  qq_get_group_members: 'getGroupMembers',
   qq_memory_append: 'memory',
   qq_memory_query: 'memory',
   qq_memory_remove: 'memory',
@@ -383,87 +356,29 @@ server.tool(
   }
 );
 
-server.tool(
-  'qq_list_groups',
-  '列出机器人所在的全部 QQ 群（只读）：群号、群名。',
-  {},
-  async () => {
-    // 旧只读工具没有 agent token：只允许在封闭 agent（管理员私聊）里使用。
-    // 判定失败一律拒绝（fail-closed），不依赖「看到某个模式才拒绝」的黑名单写法。
-    try {
-      if (!(await legacyReadToolAllowed())) {
-        return { content: [{ type: 'text', text: '旧只读工具仅在封闭 agent（管理员私聊）模式可用；其它模式请使用带会话令牌的 v2 读工具' }], isError: true };
+// 群成员列表：v2 形态（key + token）。轻量版没有 closed-agent，旧的群号形态
+// 在 reserved2 下必然 403，而预设第 6 条要求 AI 从这里拿 userId —— 直接提供可用版本。
+if (cfg.socialV2?.tools?.getGroupMembers !== false) {
+  server.tool(
+    'qq_get_group_members',
+    '列出指定群的成员（只读）：QQ 号、昵称、群名片。等特定的人、要 @ 某个人、或需要确认谁在群里时用；QQ 号取返回里的 userId。只返回白名单群，且只读取桥接允许的会话。',
+    {
+      key: z.string().describe('会话 key，格式 group:群号'),
+      token: z.string().optional().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
+      limit: z.number().optional().describe('最多返回多少成员，默认 50，最大 100')
+    },
+    async ({ key, token, limit }) => {
+      try {
+        const q = new URLSearchParams({ key });
+        if (limit != null) q.set('limit', String(limit));
+        const data = await agentApi(`/api/socialV2/group-members?${q.toString()}`, token ? { headers: { 'x-agent-token': token } } : {});
+        return { content: [{ type: 'text', text: serializeModelData(data) }] };
+      } catch (error) {
+        return { content: [{ type: 'text', text: `获取群成员失败：${error?.message ?? error}` }], isError: true };
       }
-    } catch (error) {
-      return { content: [{ type: 'text', text: `无法确认当前模式，拒绝执行：${error?.message ?? error}` }], isError: true };
     }
-    try {
-      const a = getAccess();
-      const data = await onebot('get_group_list');
-      const list = (Array.isArray(data) ? data : (data?.data ?? []))
-          .filter((g) => isAllowed(a.allowGroups, a.denyGroups, g.group_id, a.allowAllWhenEmpty))
-          .map((g) => ({ group_id: g.group_id, group_name: g.group_name }));
-      return { content: [{ type: 'text', text: serializeModelData(list) }] };
-    } catch (error) {
-      return { content: [{ type: 'text', text: `查询失败：${error?.message ?? error}` }], isError: true };
-    }
-  }
-);
-
-server.tool(
-  'qq_get_group_members',
-  '列出指定群的成员列表（只读）：QQ 号、昵称、群名片。',
-  { groupId: z.union([z.number(), z.string()]).describe('群号') },
-  async ({ groupId }) => {
-    const g = String(groupId);
-    try {
-      if (!(await legacyReadToolAllowed())) {
-        return { content: [{ type: 'text', text: '旧只读工具仅在封闭 agent（管理员私聊）模式可用；其它模式请使用带会话令牌的 v2 读工具' }], isError: true };
-      }
-    } catch (error) {
-      return { content: [{ type: 'text', text: `无法确认当前模式，拒绝读取：${error?.message ?? error}` }], isError: true };
-    }
-    const a = getAccess();
-    if (!isAllowed(a.allowGroups, a.denyGroups, g, a.allowAllWhenEmpty)) {
-      return { content: [{ type: 'text', text: `拒绝：群 ${g} 不在只读白名单中` }], isError: true };
-    }
-    try {
-      const data = await onebot('get_group_member_list', { group_id: Number(g) });
-      const list = (Array.isArray(data) ? data : (data?.data ?? [])).map((m) => ({ user_id: m.user_id, nickname: m.nickname, card: m.card }));
-      return { content: [{ type: 'text', text: serializeModelData(list) }] };
-    } catch (error) {
-      return { content: [{ type: 'text', text: `查询失败：${error?.message ?? error}` }], isError: true };
-    }
-  }
-);
-
-server.tool(
-  'qq_get_group_history',
-  '获取指定群的最近消息历史（只读）。messageSeq 可选：从该消息序号往前取。注意：是否可用取决于 SnowLuma 是否实现 get_group_msg_history。',
-  { groupId: z.union([z.number(), z.string()]).describe('群号'), messageSeq: z.number().optional().describe('起始消息序号（可选）') },
-  async ({ groupId, messageSeq }) => {
-    const g = String(groupId);
-    try {
-      if (!(await legacyReadToolAllowed())) {
-        return { content: [{ type: 'text', text: '旧只读工具仅在封闭 agent（管理员私聊）模式可用；其它模式请使用带会话令牌的 v2 读工具' }], isError: true };
-      }
-    } catch (error) {
-      return { content: [{ type: 'text', text: `无法确认当前模式，拒绝读取：${error?.message ?? error}` }], isError: true };
-    }
-    const a = getAccess();
-    if (!isAllowed(a.allowGroups, a.denyGroups, g, a.allowAllWhenEmpty)) {
-      return { content: [{ type: 'text', text: `拒绝：群 ${g} 不在只读白名单中` }], isError: true };
-    }
-    try {
-      const params = { group_id: Number(g) };
-      if (messageSeq !== undefined) params.message_seq = messageSeq;
-      const data = await onebot('get_group_msg_history', params);
-      return { content: [{ type: 'text', text: serializeModelData(data) }] };
-    } catch (error) {
-      return { content: [{ type: 'text', text: `查询失败：${error?.message ?? error}` }], isError: true };
-    }
-  }
-);
+  );
+}
 
 server.tool(
   'qq_send_group_message',

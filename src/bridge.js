@@ -548,6 +548,7 @@ function loadConfig() {
         getMyRecent: true,
         getMessageDetail: true,
         getActiveMembers: true,
+        getGroupMembers: true,
         setWakeConfig: true,
         markRead: true,
         memory: true,
@@ -676,6 +677,7 @@ function loadConfig() {
     getMyRecent: true,
     getMessageDetail: true,
     getActiveMembers: true,
+        getGroupMembers: true,
     setWakeConfig: true,
     markRead: true,
     memory: true,
@@ -755,6 +757,7 @@ function loadConfig() {
   // 否则 `{...defaults, ...file.socialV2}` 里缺失的 media 会取到 undefined（等于无上限判断）。
   cfg.socialV2.media = {
     maxBytes: 8 * 1024 * 1024,
+    maxModelBytes: 1024 * 1024,
     maxPixels: 64_000_000,
     maxCount: 5,
     maxDownloadBytes: 24 * 1024 * 1024,
@@ -1259,6 +1262,27 @@ async function main() {
     try { saveStickerStore(STICKER_FILE, stickerEntries); } catch (error) { log('保存表情库失败:', error?.message ?? error); }
   }
 
+  // 读接口的 OneBot HTTP 兜底：WS 正在重连时，网关的 HTTP 口通常仍然可用。
+  // 只用于读操作（拉表情库、群成员），发送仍走统一出站链路。
+  async function onebotHttpAction(action, params = {}, { timeoutMs = 15000 } = {}) {
+    const httpUrl = String(cfg.snowluma?.httpUrl || 'http://127.0.0.1:3000').replace(/\/+$/, '');
+    const res = await fetch(`${httpUrl}/${action}`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(cfg.snowluma?.accessToken ? { authorization: `Bearer ${cfg.snowluma.accessToken}` } : {})
+      },
+      body: JSON.stringify(params ?? {}),
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || body.status !== 'ok' || body.retcode !== 0) {
+      const hint = res.status === 426 ? '（HTTP 426：snowluma.httpUrl 可能指向了 WebSocket 端口）' : '';
+      throw new Error(`OneBot HTTP ${action} 失败: ${body.wording || body.retcode || res.status}${hint}`);
+    }
+    return body;
+  }
+
   // 从 SnowLuma OneBot 拉取 QQ 账号收藏表情（fetch_custom_face_detail），并合并进本地库。
   // force=true 时忽略 TTL 强制刷新；失败时返回 null（调用方决定是否使用缓存）。
   async function syncStickerLibrary(force = false) {
@@ -1271,9 +1295,17 @@ async function main() {
     }
     try {
       const count = Math.min(500, Math.max(1, Number(cfg.socialV2?.sticker?.maxListCount) || 100));
-      const response = await bot.request('fetch_custom_face_detail', { count });
-      if (!response || response.status !== 'ok' || response.retcode !== 0) {
-        throw new Error(`fetch_custom_face_detail 失败: ${response?.wording || response?.retcode || 'unknown'}`);
+      let response;
+      let via = 'ws';
+      try {
+        response = await bot.request('fetch_custom_face_detail', { count });
+        if (!response || response.status !== 'ok' || response.retcode !== 0) {
+          throw new Error(`fetch_custom_face_detail 失败: ${response?.wording || response?.retcode || 'unknown'}`);
+        }
+      } catch (wsError) {
+        log(`[sticker] WS 同步不可用（${wsError?.message ?? wsError}），改走 OneBot HTTP 兜底`);
+        response = await onebotHttpAction('fetch_custom_face_detail', { count });
+        via = 'http';
       }
       // 只有拿到合法数组才允许合并；data 缺失/异常时不能拿空数组清空本地 QQ 表情库。
       if (!Array.isArray(response.data)) {
@@ -1283,8 +1315,8 @@ async function main() {
       stickerEntries = mergeStickerLibrary(stickerEntries, fetched, { complete: fetched.length < count });
       stickerSyncedAt = Date.now();
       saveStickerStoreSafe();
-      log(`[sticker] 已同步 QQ 收藏表情 ${fetched.length} 个（本地库 ${stickerEntries.length} 条）`);
-      return { entries: stickerEntries, syncedAt: stickerSyncedAt, fromCache: false };
+      log(`[sticker] 已同步 QQ 收藏表情 ${fetched.length} 个（本地库 ${stickerEntries.length} 条，via ${via}）`);
+      return { entries: stickerEntries, syncedAt: stickerSyncedAt, fromCache: false, via };
     } catch (error) {
       log(`[sticker] 同步收藏表情失败: ${error?.message ?? error}`);
       return null;
@@ -3935,7 +3967,7 @@ async function main() {
             merged.autoReplyCheckMs = Number.isFinite(n) ? Math.max(1000, Math.round(n)) : (current.autoReplyCheckMs ?? 30000);
           }
           // tools：只接受布尔开关
-          const toolFlags = ['getPrompt', 'getUnread', 'getRecent', 'socialState', 'sendGroup', 'sendPrivate', 'reply', 'sendBurst', 'sendMessage', 'waitMessages', 'feedback', 'getMyRecent', 'getMessageDetail', 'getActiveMembers', 'setWakeConfig', 'markRead', 'memory', 'slangQuery', 'slangSubmit', 'getImages', 'getForwardMsg', 'sendPoke', 'listStickers', 'getStickerImage', 'sendSticker', 'setStickerRemark', 'stickerNote', 'collectSticker', 'getSelfImage', 'personProfile', 'crossGroup', 'ownerRelay', 'ownerGroupAccess', 'sendVoice'];
+          const toolFlags = ['getPrompt', 'getUnread', 'getRecent', 'socialState', 'sendGroup', 'sendPrivate', 'reply', 'sendBurst', 'sendMessage', 'waitMessages', 'feedback', 'getMyRecent', 'getMessageDetail', 'getActiveMembers', 'getGroupMembers', 'setWakeConfig', 'markRead', 'memory', 'slangQuery', 'slangSubmit', 'getImages', 'getForwardMsg', 'sendPoke', 'listStickers', 'getStickerImage', 'sendSticker', 'setStickerRemark', 'stickerNote', 'collectSticker', 'getSelfImage', 'personProfile', 'crossGroup', 'ownerRelay', 'ownerGroupAccess', 'sendVoice'];
           if (body.tools && typeof body.tools === 'object') {
             merged.tools = { ...(current.tools ?? {}), ...body.tools };
             for (const k of toolFlags) {
@@ -4184,6 +4216,7 @@ async function main() {
             getMyRecent: 'qq_get_my_recent_messages',
             getMessageDetail: 'qq_get_message_detail',
             getActiveMembers: 'qq_get_active_members',
+            getGroupMembers: 'qq_get_group_members',
             setWakeConfig: 'qq_set_wake_config',
             markRead: 'qq_mark_read',
             memory: 'qq_memory_append / qq_memory_query / qq_memory_remove / qq_memory_clear',
@@ -4969,7 +5002,7 @@ async function main() {
             if (hasImageCodec()) {
               try {
                 const prepared = await prepareImage(fetched.buffer, {
-                  maxBytes: MAX_MEDIA_BYTES,
+                  maxBytes: MAX_MODEL_IMAGE_BYTES,
                   maxPixels: MAX_MEDIA_PIXELS,
                   maxLongEdge: MAX_MEDIA_LONG_EDGE,
                   quality: MEDIA_QUALITY,
@@ -5653,14 +5686,16 @@ async function main() {
             return;
           }
           const preSleepWaitMs = Math.max(0, Number(cfg.socialV2?.wake?.preSleepWaitMs) || 300000);
-          const preSleepRemainingMs = preSleepWaitBlockedV2(st)
+          const preSleepBlocked = preSleepWaitBlockedV2(st);
+          const preSleepRemainingMs = preSleepBlocked
             ? Math.max(0, preSleepWaitMs - ((st.lastIncomingAt || 0) ? Date.now() - st.lastIncomingAt : 0))
             : 0;
+          // 这次等待算不算沉睡前观察：闸门只认单次 timeoutMs ≥ 观察窗口的调用。
+          const preSleepCountsAsObservation = !replyWait && timeoutMs >= preSleepWaitMs;
           const quiet = (replyWait || (arrived && quietMs > 0)) && (Date.now() - lastNewAt >= quietMs);
           // 判断这次等待是否是“沉睡前观察尝试”：AI 明确请求等满观察窗口（默认 5 分钟）。
           // 只有这种尝试里等到新消息，才会把“已观察并看到新消息”标记下来，允许 AI 看过新消息后直接决定不参与并沉睡。
-          const preSleepAttempt = !replyWait && timeoutMs >= preSleepWaitMs;
-          // 只有“没等到新消息且总时长达到观察窗口”或“最后一条新消息之后安静满了观察窗口”才算满足沉睡前等待；
+          const preSleepAttempt = !replyWait && timeoutMs >= preSleepWaitMs;          // 只有“没等到新消息且总时长达到观察窗口”或“最后一条新消息之后安静满了观察窗口”才算满足沉睡前等待；
           // 不能因为总时长到了但最后一条消息才刚过 10 秒就误判满足。
           const preSleepSatisfiedNow = !replyWait && (!arrived
             ? waitedMs >= preSleepWaitMs
@@ -5690,9 +5725,18 @@ async function main() {
             ? [...(v2ToolEnabled('getUnread') ? st.unread : []),
               ...(v2ToolEnabled('getRecent') ? st.recentMessages : [])]
             : (Array.isArray(st.recentMessages) ? st.recentMessages : []);
-          const pending = [...new Map(history
-            .filter((m) => m && !m.isSelf && (m.seq || 0) > baseline)
+          // 按“已读过水位”取，而不是只按请求开始时的新消息序号：
+          // 模型思考/发送那几秒里到达的消息，旧逻辑会落在本次窗口之外；下次请求的
+          // baseline 又已越过它们 ⇒ 既没展示、也没进 readThroughSeq，水位从此卡死。
+          const watermarkAtRequest = readThroughSeqV2(st);
+          const pendingFloor = Math.min(baseline, watermarkAtRequest);
+          const fullPending = [...new Map(history
+            .filter((m) => m && !m.isSelf && (m.seq || 0) > pendingFloor)
             .map((m) => [m.seq, m])).values()].sort((a, b) => a.seq - b.seq);
+          // 有上限，且必须从最老的开始取：一次倒太多旧账会挤爆上下文，也会让水位不连续。
+          const waitCap = Math.min(50, Math.max(12, Number(cfg.socialV2?.context?.unreadLimit) || 30));
+          const pending = fullPending.length > waitCap ? fullPending.slice(0, waitCap) : fullPending;
+          const pendingTruncated = fullPending.length > pending.length;
           // `arrived` is recomputed against what this request may actually hand over,
           // so a suppressed buffer cannot report an arrival it is not allowed to show.
           const newMessages = replyWait ? pending : (arrived ? pending : []);
@@ -5718,6 +5762,15 @@ async function main() {
             // A reply check has no sleep countdown; showing one here suggests
             // the model should complete sleep observation before its first reply.
             ...(!replyWait ? { preSleepWaitMs, preSleepWaitRemainingMs: preSleepRemainingMs } : {}),
+            // 把闸门的判断直接告诉模型：避免它用 90 秒短等去凑 5 分钟观察窗口。
+            ...(!replyWait ? {
+              canSleepNow: !preSleepBlocked,
+              countsAsObservation: preSleepCountsAsObservation,
+              hint: preSleepBlocked
+                ? `还不能收尾：还需约 ${Math.ceil(preSleepRemainingMs / 1000)} 秒没有新消息。要完成沉睡前观察，请用 qq_wait_for_messages(timeoutMs=${preSleepWaitMs}) 一次等满——更短的 timeoutMs 不算观察，满足不了闸门（本次 ${Math.round(timeoutMs)}ms ${preSleepCountsAsObservation ? '达标' : '不达标'}）。`
+                : '现在可以直接收尾：qq_mark_read(throughSeq=已读水位) 或 qq_set_wake_config(throughSeq=已读水位, config=…)。不用再等一轮。'
+            } : {}),
+            ...(pendingTruncated ? { partial: true } : {}),
             newMessages,
             readThroughSeq,
             unreadCount: st.unread.length
@@ -6032,6 +6085,41 @@ async function main() {
           }
           const members = [...map.values()].sort((a, b) => b.count - a.count || b.lastTime - a.lastTime).slice(0, limit);
           sendJson({ ok: true, key, members });
+          return;
+        }
+        // 群成员列表（v2 读工具）：旧 qq_get_group_members 只在 closed-agent 可用，
+        // 轻量版没有 closed-agent，预设却要求 AI 从这里拿 userId → 必须提供 v2 形态。
+        if (req.method === 'GET' && url.pathname === '/api/socialV2/group-members') {
+          const key = String(url.searchParams.get('key') ?? '').trim();
+          const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit')) || 50));
+          if (!key) { sendJson({ ok: false, error: 'key 不能为空' }, 400); return; }
+          const groupMatch = /^group:(\d+)$/.exec(key);
+          if (!groupMatch) { sendJson({ ok: false, error: '群成员只能按 group:群号 查询' }, 400); return; }
+          if (req.headers['x-agent-token'] && !agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
+          if (!v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
+          if (req.headers['x-agent-token'] && !v2ToolEnabled('getGroupMembers')) { sendJson({ ok: false, error: '工具未启用：qq_get_group_members' }, 403); return; }
+          const groupId = Number(groupMatch[1]);
+          try {
+            let response;
+            try {
+              response = await bot.request('get_group_member_list', { group_id: groupId });
+            } catch (wsError) {
+              log(`[group-members] WS 读取失败（${wsError?.message ?? wsError}），改走 OneBot HTTP 兜底`);
+              response = await onebotHttpAction('get_group_member_list', { group_id: groupId });
+            }
+            const payload = response && typeof response === 'object' && response.data !== undefined ? response.data : response;
+            const raw = Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : null);
+            if (!raw) { sendJson({ ok: false, error: '网关返回的成员列表格式异常，已拒绝' }, 502); return; }
+            const members = raw.slice(0, limit).map((m) => ({
+              userId: m?.user_id != null ? String(m.user_id) : '',
+              nickname: truncateText(String(m?.nickname ?? ''), 40),
+              card: truncateText(String(m?.card ?? ''), 40),
+              ...(m?.role ? { role: String(m.role) } : {})
+            })).filter((m) => m.userId);
+            sendJson({ ok: true, key, count: raw.length, returned: members.length, truncated: raw.length > members.length, members });
+          } catch (error) {
+            sendJson({ ok: false, error: `获取群成员失败：${error?.message ?? error}` }, 502);
+          }
           return;
         }
         // ── v0.3.0 AI 工具：人物档案（以 QQ 号为键，按可见范围过滤）──────────────
@@ -6987,6 +7075,9 @@ async function main() {
   // 媒体上限（config.json 可调，但必须收敛到安全区间）：
   //   maxBytes  —— 单条消息里图片/表情的总字节上限。8MB 能覆盖绝大多数动图表情；
   //                太大会让 base64 常驻内存（×1.33）并拖慢 DSH 上传。
+  //   maxModelBytes —— 交给 DSH/MCP 的**单张**图片字节上限。DSH 的 MCP 图片通道用正则校验
+  //                canonical base64，实测 ≥4,474,880 个字符（原始字节 ≥3.20MiB）会压爆 V8
+  //                正则栈，图片被 DSH 丢掉；这里默认 1MiB，上界 3MiB，留足余量。
   //   maxPixels —— 压缩后的单张像素上限（防图片炸弹；超限原图会先降采样再送模型）。
   //   maxCount  —— 单条消息最多处理几个媒体条目（防止一次 @ 带 20 张图把模型上下文撑爆）。
   //   maxDownloadBytes —— 压缩前允许下载的原图上限；超过的图不再“直接丢弃”，而是尽可能压缩。
@@ -6998,6 +7089,7 @@ async function main() {
   const maxMediaBytesLimit = mediaInt(cfg.socialV2?.media?.maxBytes, 256 * 1024, 20 * 1024 * 1024, 8 * 1024 * 1024);
   const MAX_MEDIA_COUNT = mediaInt(cfg.socialV2?.media?.maxCount, 1, 8, 5);
   const MAX_MEDIA_BYTES = maxMediaBytesLimit; // 单条消息图片总字节上限
+  const MAX_MODEL_IMAGE_BYTES = mediaInt(cfg.socialV2?.media?.maxModelBytes, 128 * 1024, 3 * 1024 * 1024, 1024 * 1024);
   const MAX_MEDIA_PIXELS = mediaInt(cfg.socialV2?.media?.maxPixels, 1_000_000, 64_000_000, 64_000_000);
   const MAX_MEDIA_FETCH_BYTES = mediaInt(cfg.socialV2?.media?.maxDownloadBytes, MAX_MEDIA_BYTES, 32 * 1024 * 1024, 24 * 1024 * 1024);
   const MAX_MEDIA_DECODE_PIXELS = mediaInt(cfg.socialV2?.media?.maxDecodePixels, 64_000_000, 150_000_000, 100_000_000);
@@ -7005,7 +7097,7 @@ async function main() {
   const MEDIA_QUALITY = mediaInt(cfg.socialV2?.media?.quality, 55, 95, 82);
   const MAX_ANIMATED_FRAMES = mediaInt(cfg.socialV2?.media?.animatedFrames, 1, 10, 6);
   const FRAME_LONG_EDGE = mediaInt(cfg.socialV2?.media?.frameLongEdge, 512, 1600, 1024);
-  const FRAME_BYTES = mediaInt(cfg.socialV2?.media?.frameBytes, 128 * 1024, 4 * 1024 * 1024, 1024 * 1024);
+  const FRAME_BYTES = Math.min(MAX_MODEL_IMAGE_BYTES, mediaInt(cfg.socialV2?.media?.frameBytes, 128 * 1024, 4 * 1024 * 1024, 1024 * 1024));
   const MAX_IMAGE_PARTS = mediaInt(cfg.socialV2?.media?.maxImageParts, 1, 12, 8);
   const MAX_MEDIA_STORE_PER_KEY = 500; // 每个会话最多缓存多少条消息的媒体元数据，防止无限增长
 
@@ -7162,7 +7254,7 @@ async function main() {
 
     try {
       const prepared = await prepareImage(result.buffer, {
-        maxBytes: MAX_MEDIA_BYTES,
+        maxBytes: MAX_MODEL_IMAGE_BYTES,
         maxPixels: MAX_MEDIA_PIXELS,
         maxLongEdge: MAX_MEDIA_LONG_EDGE,
         quality: MEDIA_QUALITY,

@@ -190,42 +190,28 @@ test('a bridge 200 with ok:false is reported to the model as a failure', async (
   assert.match(result.content[0].text, /阻止发送/);
 });
 
-// 回归：旧只读工具没有会话令牌，只能用在封闭 agent（管理员私聊）里。
-// 桥接的 /api/status 对「带 agent 令牌」的调用返回最小对象（不含 mode 字段），
-// 于是「看到 reserved2 才拒绝」的黑名单写法会判定为假 ⇒ 在二代仿真模式下放行，
-// 把白名单群名、群成员名单注入模型上下文。
-test('legacy read tools fail closed unless the bridge reports closed-agent', async () => {
-  for (const status of [
-    { mode: 'reserved2' }, { mode: 'chat' }, { mode: 'reserved' },
-    {},                       // 无 mode 字段（桥接对 agent 流量返回的最小状态）
-  ]) {
-    const callTool = loadSnowlumaTools(async () => Response.json(status));
-    const result = await callTool('qq_list_groups', {});
-    assert.equal(result.isError, true, `mode=${status.mode ?? '(缺失)'} 时旧只读工具必须拒绝`);
+// 轻量版没有 closed-agent：旧的无令牌只读工具（qq_list_groups / qq_get_group_history）
+// 不再注册，避免模型被提示词引到一个永远 403 的工具上；群成员改走带 key + token 的 v2 端点。
+test('legacy closed-agent read tools are not registered', async () => {
+  const callTool = loadSnowlumaTools(async () => Response.json({}));
+  for (const name of ['qq_list_groups', 'qq_get_group_history']) {
+    await assert.rejects(callTool(name, {}), /should be registered/, `${name} 不应再注册`);
   }
-  // 只有确认是 closed-agent 才放行
-  const callTool = loadSnowlumaTools(async (url) => {
-    if (String(url).includes('/api/status')) return Response.json({ mode: 'closed-agent' });
-    return Response.json({ status: 'ok', retcode: 0, data: [{ group_id: 456, group_name: 'fixture' }] });
-  });
-  const result = await callTool('qq_list_groups', {});
-  assert.notEqual(result.isError, true, 'closed-agent 下应放行');
 });
 
-test('denied legacy group reads never reveal the group allowlist', async () => {
-  const fixtureConfig = { allow: { groups: ['111111', '222222'] } };
-  for (const mode of ['reserved2', 'closed-agent']) {
-    const calls = [];
-    const callTool = loadSnowlumaTools(async (url) => {
-      calls.push(String(url));
-      if (String(url).includes('/api/status')) return Response.json({ mode });
-      assert.fail('denied group read must not call OneBot');
-    }, fixtureConfig);
-    for (const name of ['qq_get_group_members', 'qq_get_group_history']) {
-      const result = await callTool(name, { groupId: '999999' });
-      assert.equal(result.isError, true, `${name} in ${mode} must fail`);
-      assert.doesNotMatch(result.content[0].text, /111111|222222/);
+test('group members tool uses the v2 endpoint and never reveals the group allowlist', async () => {
+  const calls = [];
+  const callTool = loadSnowlumaTools(async (url) => {
+    calls.push(String(url));
+    if (String(url).includes('/api/socialV2/group-members')) {
+      return Response.json({ ok: true, key: 'group:999999', members: [{ userId: '123', nickname: 'fixture' }] });
     }
-    assert.equal(calls.length, 2, 'only the two authorization checks should reach the bridge');
-  }
+    assert.fail(`unexpected endpoint: ${url}`);
+  });
+  const result = await callTool('qq_get_group_members', { key: 'group:999999', token: 'fixture-token' });
+  assert.notEqual(result.isError, true);
+  assert.equal(calls.length, 1, '只应请求群成员端点');
+  assert.match(calls[0], /\/api\/socialV2\/group-members\?key=group%3A999999/);
+  assert.match(result.content[0].text, /"userId":"123"/);
+  assert.doesNotMatch(result.content[0].text, /111111|222222/);
 });
