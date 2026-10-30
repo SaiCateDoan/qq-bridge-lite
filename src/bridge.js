@@ -20,7 +20,7 @@ import { NodeApiClient, unwrap, createTurnCollector, discoverDshLaunchToken } fr
 import { mdToPlain, splitForQQ, truncateText, truncateTextTail } from './md-to-plain.js';
 import { SENSITIVE_RE } from './sensitive.js';
 import { looksLikeUnfinished } from './v2-wait.js';
-import { compactModelMessage } from './qq-model-view.js';
+import { compactModelMessage, describeAge } from './qq-model-view.js';
 import { safeFetchBuffer, looksLikeImageBuffer } from './safe-fetch.js';
 import { hasImageCodec, prepareImage } from './media-compress.js';
 import { stickerMaxBytes } from './lib/sticker-limits.mjs';
@@ -765,6 +765,8 @@ function loadConfig() {
     maxLongEdge: 1280,
     quality: 82,
     animatedFrames: 6,
+    animatedLayout: 'collage',
+    gifTile: 240,
     frameLongEdge: 1024,
     frameBytes: 1024 * 1024,
     maxImageParts: 8,
@@ -5007,6 +5009,8 @@ async function main() {
                   maxLongEdge: MAX_MEDIA_LONG_EDGE,
                   quality: MEDIA_QUALITY,
                   animatedFrames: MAX_ANIMATED_FRAMES,
+                  animatedLayout: ANIMATED_LAYOUT,
+                  tileWidth: GIF_TILE_WIDTH,
                   frameLongEdge: FRAME_LONG_EDGE,
                   frameBytes: FRAME_BYTES,
                   maxDecodePixels: MAX_MEDIA_DECODE_PIXELS
@@ -7096,6 +7100,8 @@ async function main() {
   const MAX_MEDIA_LONG_EDGE = mediaInt(cfg.socialV2?.media?.maxLongEdge, 512, 2048, 1280);
   const MEDIA_QUALITY = mediaInt(cfg.socialV2?.media?.quality, 55, 95, 82);
   const MAX_ANIMATED_FRAMES = mediaInt(cfg.socialV2?.media?.animatedFrames, 1, 10, 6);
+  const ANIMATED_LAYOUT = cfg.socialV2?.media?.animatedLayout === 'frames' ? 'frames' : 'collage';
+  const GIF_TILE_WIDTH = mediaInt(cfg.socialV2?.media?.gifTile, 64, 400, 240);
   const FRAME_LONG_EDGE = mediaInt(cfg.socialV2?.media?.frameLongEdge, 512, 1600, 1024);
   const FRAME_BYTES = Math.min(MAX_MODEL_IMAGE_BYTES, mediaInt(cfg.socialV2?.media?.frameBytes, 128 * 1024, 4 * 1024 * 1024, 1024 * 1024));
   const MAX_IMAGE_PARTS = mediaInt(cfg.socialV2?.media?.maxImageParts, 1, 12, 8);
@@ -7259,6 +7265,8 @@ async function main() {
         maxLongEdge: MAX_MEDIA_LONG_EDGE,
         quality: MEDIA_QUALITY,
         animatedFrames: MAX_ANIMATED_FRAMES,
+        animatedLayout: ANIMATED_LAYOUT,
+        tileWidth: GIF_TILE_WIDTH,
         frameLongEdge: FRAME_LONG_EDGE,
         frameBytes: FRAME_BYTES,
         maxDecodePixels: MAX_MEDIA_DECODE_PIXELS
@@ -7270,6 +7278,8 @@ async function main() {
           mimeType: first.mimeType,
           frames: prepared.frames,
           animated: prepared.animated,
+          collage: !!prepared.collage,
+          note: prepared.note || '',
           originalBytes: result.buffer.length
         };
       }
@@ -7361,6 +7371,7 @@ async function main() {
         continue;
       }
       const animated = !!img?.animated && frames.length > 1;
+      if (img?.note) parts.push({ type: 'text', text: `（${img.note}）` });
       for (let f = 0; f < frames.length; f += 1) {
         const frame = frames[f];
         if (imageParts >= MAX_IMAGE_PARTS) {
@@ -7459,10 +7470,11 @@ async function main() {
         totalBytes += frame.buffer.length;
         out.push({
           ...base,
+          ...(img?.note ? { note: img.note } : {}),
           index: imageParts,
           mimeType: frame.mimeType || 'image/webp',
           data: frame.buffer.toString('base64'),
-          text: animated ? `动图第${f + 1}/${frames.length}帧` : '',
+          text: img?.collage ? String(img.note || '动图拼图') : (animated ? `动图第${f + 1}/${frames.length}帧` : ''),
           ...(animated ? { frame: { index: f + 1, total: frames.length, delayMs: frame.delay ?? null } } : {})
         });
       }
@@ -9388,7 +9400,10 @@ async function main() {
     const lastMsg = [...(Array.isArray(st.recentMessages) ? st.recentMessages : [])].reverse().find((m) => m && !m.isSelf);
     const lastAiMin = st.lastAiReplyAt ? Math.max(0, Math.round((Date.now() - Number(st.lastAiReplyAt)) / 60000)) : null;
     const statusBits = [`未读 ${(st.unread || []).length} 条`];
-    if (lastMsg) statusBits.push(`最近一条来自 ${String(lastMsg.sender || '未知')}：${String(lastMsg.text || lastMsg.plain || '').slice(0, 30)}`);
+    if (lastMsg) {
+      const age = describeAge(lastMsg.time, Date.now());
+      statusBits.push(`最近一条来自 ${String(lastMsg.sender || '未知')}${age ? `（${age} 前）` : ''}：${String(lastMsg.text || lastMsg.plain || '').slice(0, 30)}`);
+    }
     if (lastMsg && looksLikeUnfinished(String(lastMsg.tail || lastMsg.plain || lastMsg.text || ''))) statusBits.push('对方可能没说完');
     if (lastAiMin != null) statusBits.push(`你上次发言 ${lastAiMin} 分钟前`);
     const statusLine = `【此刻状态】${statusBits.join('；')}\n\n`;

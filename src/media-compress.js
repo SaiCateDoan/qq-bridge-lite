@@ -6,8 +6,9 @@
 // - 输出格式固定 WebP：DSH 的图片白名单包含 image/webp，同质量下体积通常明显小于 JPEG，
 //   且支持 alpha；不会因为“为了压小而换格式”被 DSH / 模型拒收。
 // - 静态图在限制内原样透传，避免无意义的二次编码；只有超限才重编码。
-// - 动图按“均匀抽帧 + 每帧独立压缩”处理：模型侧（DSH 归一化）本来就会把动画压成单帧，
-//   桥接先抽出多帧静态图，才能让模型看到变化过程；抽帧数量、单帧尺寸和字节数都有上限。
+// - 动图默认抽帧拼成一张 contact sheet（3×2，行优先）：模型侧（DSH 归一化）本来就会把动画压成
+//   单帧，拼图才能让模型看到变化过程，同时只占一次图片 admission / 一份 token；也支持
+//   animatedLayout='frames' 退回多张独立帧。抽帧数量、单格尺寸和字节数都有上限。
 // - 自适应：先按目标质量编码；超预算就逐步降质量，再缩小尺寸，保留“能看清”的最低成本版本。
 
 let sharp = null;
@@ -34,6 +35,8 @@ const DEFAULTS = Object.freeze({
   maxLongEdge: 1280,
   quality: 82,
   animatedFrames: 6,
+  animatedLayout: 'collage',
+  tileWidth: 240,
   frameLongEdge: 1024,
   frameBytes: 1024 * 1024,
   maxDecodePixels: 100_000_000
@@ -52,6 +55,8 @@ function normalizeOptions(options = {}) {
     maxLongEdge: clampInt(options.maxLongEdge, 512, 2048, DEFAULTS.maxLongEdge),
     quality: clampInt(options.quality, 55, 95, DEFAULTS.quality),
     animatedFrames: clampInt(options.animatedFrames, 1, 10, DEFAULTS.animatedFrames),
+    animatedLayout: options.animatedLayout === 'frames' ? 'frames' : 'collage',
+    tileWidth: clampInt(options.tileWidth, 64, 400, DEFAULTS.tileWidth),
     frameLongEdge: clampInt(options.frameLongEdge, 512, 1600, DEFAULTS.frameLongEdge),
     frameBytes: clampInt(options.frameBytes, 128 * 1024, 4 * 1024 * 1024, DEFAULTS.frameBytes),
     maxDecodePixels: clampInt(options.maxDecodePixels, 64_000_000, 150_000_000, DEFAULTS.maxDecodePixels)
@@ -78,6 +83,79 @@ function sampleIndices(pages, count) {
     out.add(Math.round((i * (pages - 1)) / (count - 1)));
   }
   return [...out].sort((a, b) => a - b);
+}
+
+const LAYOUTS = Object.freeze({
+  1: [1, 1], 2: [2, 1], 3: [3, 1], 4: [2, 2], 5: [3, 2], 6: [3, 2],
+  7: [4, 2], 8: [4, 2], 9: [3, 3], 10: [5, 2], 11: [4, 3], 12: [4, 3]
+});
+
+function layoutFor(count) {
+  return LAYOUTS[count] ?? [Math.ceil(Math.sqrt(count)), Math.ceil(count / Math.ceil(Math.sqrt(count)))];
+}
+
+/**
+ * 把抽出的帧拼成一张 contact sheet（行优先，左上→右下）。
+ * 相比发 6 张独立图：只占一次图片 admission / 一份 token，信息密度更高。
+ */
+async function composeContactSheet(buffer, meta, opts, pages) {
+  const [cols, rows] = layoutFor(pages.length);
+  const margin = 4;
+  const padding = 4;
+  const cellW = opts.tileWidth;
+  // 极端竖图不要把画布撑爆：单格高度封顶 480px，内容按 contain 居中。
+  const cellH = Math.min(480, Math.max(1, Math.round((meta.height * cellW) / Math.max(1, meta.width))));
+  const sheetW = margin * 2 + cols * cellW + (cols - 1) * padding;
+  const sheetH = margin * 2 + rows * cellH + (rows - 1) * padding;
+  const composites = [];
+
+  for (let i = 0; i < pages.length; i += 1) {
+    const { data, info } = await sharp(buffer, {
+      page: pages[i],
+      pages: 1,
+      limitInputPixels: opts.maxDecodePixels
+    })
+      .rotate()
+      .resize({ width: cellW, height: cellH, fit: 'inside', withoutEnlargement: true, kernel: 'lanczos3' })
+      .png()
+      .toBuffer({ resolveWithObject: true });
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    composites.push({
+      input: data,
+      left: margin + col * (cellW + padding) + Math.floor((cellW - info.width) / 2),
+      top: margin + row * (cellH + padding) + Math.floor((cellH - info.height) / 2)
+    });
+  }
+
+  let quality = opts.quality;
+  let smallest = null;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const out = await sharp({
+      create: { width: sheetW, height: sheetH, channels: 3, background: { r: 255, g: 255, b: 255 } }
+    })
+      .composite(composites)
+      .webp({ quality, effort: 4, smartSubsample: true })
+      .toBuffer();
+    if (!smallest || out.length < smallest.buffer.length) smallest = { buffer: out, quality };
+    if (out.length <= opts.maxBytes) {
+      smallest = { buffer: out, quality };
+      break;
+    }
+    if (quality <= 55) break;
+    quality = Math.max(55, quality - 8);
+  }
+
+  const durationMs = (meta.delay || []).reduce((sum, ms) => sum + (Number.isFinite(Number(ms)) ? Number(ms) : 0), 0);
+  const duration = durationMs > 0 ? `/${(durationMs / 1000).toFixed(1)}s` : '';
+  return {
+    buffer: smallest.buffer,
+    mimeType: 'image/webp',
+    width: sheetW,
+    height: sheetH,
+    quality: smallest.quality,
+    note: `动图 ${meta.pages} 帧${duration}，已抽 ${pages.length} 帧拼成 ${cols}×${rows} 网格（行优先，左上→右下）`
+  };
 }
 
 async function probe(buffer, opts) {
@@ -183,6 +261,34 @@ export async function prepareImage(buffer, options = {}) {
 
   const count = Math.min(opts.animatedFrames, meta.pages);
   const pages = sampleIndices(meta.pages, count);
+
+  // 默认拼图：一帧一张图在 MCP 里是多次 admission / 多份 token；拼成一张信息密度更高。
+  // 拼图失败时退回多帧，至少不让模型失明。
+  if (opts.animatedLayout === 'collage') {
+    try {
+      const sheet = await composeContactSheet(buffer, meta, opts, pages);
+      return {
+        animated: true,
+        pages: meta.pages,
+        collage: true,
+        note: sheet.note,
+        frames: [{
+          buffer: sheet.buffer,
+          mimeType: sheet.mimeType,
+          width: sheet.width,
+          height: sheet.height,
+          page: 0,
+          index: 1,
+          total: 1,
+          collage: true,
+          quality: sheet.quality
+        }]
+      };
+    } catch {
+      // fall through to multi-frame extraction
+    }
+  }
+
   const frames = [];
   for (const page of pages) {
     const still = await encodeStill(buffer, meta, opts, {

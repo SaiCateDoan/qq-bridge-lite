@@ -101,12 +101,14 @@ AI **收藏**群友的表情、**发送**收藏表情时，桥接会先自己下
 | `maxLongEdge` | 1280 | 静态图长边上限（同时受像素上限约束） |
 | `quality` | 82 | WebP 初始质量（55～95）；超预算会自适应下调 |
 | `animatedFrames` | 6 | 动图最多抽几帧（首尾均匀采样） |
-| `frameLongEdge` | 1024 | 动图单帧长边上限 |
+| `animatedLayout` | `collage` | `collage` = 拼成一张 3×2 网格（默认，省 token/admission）；`frames` = 返回多张独立帧 |
+| `gifTile` | 240 | 拼图每格宽度（px），高按原图比例，单格高度封顶 480 |
+| `frameLongEdge` | 1024 | 动图单帧长边上限（仅 `frames` 模式） |
 | `frameBytes` | 1048576（1MB） | 动图单帧字节预算 |
 | `maxImageParts` | 8 | 一条消息最多送给模型多少张图（含动图帧） |
 
 - 静态图在限制内会原样透传，不做二次编码；只有超限才压缩。
-- 动图抽帧后会按 `动图第 1/6 帧` 这样的顺序标注；模型侧不再只看到第一帧。
+- 动图默认拼成一张网格（`collage`，行优先），返回里会说明帧数/网格；`frames` 模式则按 `动图第 1/6 帧` 标注多张图。
 - 没有安装 `sharp` 时会退回旧行为（超限跳过）并在日志里提示；`npm ci` 会一并安装。
 
 ## `socialV2.sticker.collect.tempDir` —— NapCat 收藏表情用的临时目录（默认留空）

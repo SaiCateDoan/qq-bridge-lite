@@ -278,6 +278,8 @@
       "maxLongEdge": 1280,
       "quality": 82,
       "animatedFrames": 6,
+      "animatedLayout": "collage",
+      "gifTile": 240,
       "frameLongEdge": 1024,
       "frameBytes": 1048576,
       "maxImageParts": 8

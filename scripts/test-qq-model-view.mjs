@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { compactModelMessage, compactModelData, serializeModelData } from '../src/qq-model-view.js';
+import { compactModelMessage, compactModelData, serializeModelData, describeAge } from '../src/qq-model-view.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const shortMessage = {
@@ -15,6 +15,24 @@ const shortMessage = {
   quoteTargetIsSelf: false, isOwner: false, ownerLabel: '', isSelf: false,
   media: [], hasMedia: false, forwardIds: [], hasForward: false, time: 1789680000000
 };
+
+test('valid timestamps become local at + relative ago', () => {
+  const now = new Date(2026, 9, 30, 12, 0, 0).getTime();
+  const before = compactModelMessage({ ...shortMessage, time: now - 38 * 60 * 1000 }, { now });
+  assert.equal(before.time, undefined, '裸 epoch 不再出现在模型视图里');
+  assert.match(before.at, /^\d{2}:\d{2}$/);
+  assert.equal(before.ago, '38m');
+  assert.equal(describeAge(0), '', '缺失/0 时间不伪装成刚刚');
+  assert.equal(describeAge(now - 3 * 1000, now), '3s');
+  assert.equal(describeAge(now - 2 * 3600 * 1000, now), '2h');
+  // 同一批 envelope 只取一次 now，消息之间不会因跨分钟边界自相矛盾。
+  const data = compactModelData({ messages: [
+    { ...shortMessage, time: now - 60 * 1000 },
+    { ...shortMessage, seq: 22, time: now - 30 * 1000 }
+  ] }, { now });
+  assert.equal(data.messages[0].ago, '1m');
+  assert.equal(data.messages[1].ago, '30s');
+});
 
 test('short messages retain identity and text once, including zero-valued timestamps', () => {
   assert.deepEqual(compactModelMessage({ ...shortMessage, time: 0 }), {

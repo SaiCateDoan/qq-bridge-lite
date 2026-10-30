@@ -48,7 +48,7 @@ check('sharp/libvips 可用', hasImageCodec());
   }).png().toBuffer();
   const frames = await Promise.all([mk(255, 0, 0), mk(0, 255, 0), mk(0, 0, 255)]);
   const gif = await sharp(frames, { join: { animated: true } }).gif().toBuffer();
-  const out = await prepareImage(gif, { animatedFrames: 6, frameLongEdge: 96, frameBytes: 100 * 1024 });
+  const out = await prepareImage(gif, { animatedFrames: 6, animatedLayout: 'frames', frameLongEdge: 96, frameBytes: 100 * 1024 });
   check('动图识别为多帧', out.animated === true && out.pages === 3);
   check('抽帧数量正确', out.frames.length === 3, `${out.frames.length}`);
   check('抽出的都是 WebP', out.frames.every((f) => f.mimeType === 'image/webp'));
@@ -69,13 +69,13 @@ check('sharp/libvips 可用', hasImageCodec());
     }).png().toBuffer());
   }
   const gif = await sharp(frames, { join: { animated: true } }).gif().toBuffer();
-  const out = await prepareImage(gif, { animatedFrames: 4, frameLongEdge: 32, frameBytes: 50 * 1024 });
+  const out = await prepareImage(gif, { animatedFrames: 4, animatedLayout: 'frames', frameLongEdge: 32, frameBytes: 50 * 1024 });
   const pages = out.frames.map((f) => f.page);
   check('抽帧数量受上限约束', out.frames.length === 4, pages.join(','));
   check('首尾均匀采样', pages[0] === 0 && pages.at(-1) === 9, pages.join(','));
 }
 
-// 5) 桥接接线：fetchMediaData 会把动图拆成多条带序号的图片条目。
+// 5) 桥接接线：默认拼成一张网格，配置为 frames 时才拆成多条图片条目。
 {
   const mk = (r, g, b) => sharp({
     create: { width: 64, height: 64, channels: 3, background: { r, g, b } }
@@ -92,12 +92,41 @@ check('sharp/libvips 可用', hasImageCodec());
   });
   try {
     const entries = await h.fetchMediaData([{ kind: 'image', url: 'https://example.invalid/a.gif' }]);
-    check('桥接把动图拆成多条图片', entries.length === 3, `${entries.length}`);
-    check('帧带顺序标注', entries.every((e, i) => String(e.text).includes(`第${i + 1}/3帧`)), JSON.stringify(entries.map((e) => e.text)));
-    check('帧都是 WebP', entries.every((e) => e.mimeType === 'image/webp'));
+    check('默认把动图拼成一张图', entries.length === 1, `${entries.length}`);
+    check('拼图带网格说明', String(entries[0].text).includes('3×1 网格'), String(entries[0].text));
+    check('拼图是 WebP', entries[0].mimeType === 'image/webp');
   } finally {
     await h.close();
   }
+
+  const h2 = await bridgeHarness({
+    config: { dsh: { provider: 'deepseek-account', model: 'deepseek-flash', vision: 'auto' }, socialV2: { media: { animatedLayout: 'frames' } } },
+    globals: {
+      hasImageCodec,
+      prepareImage,
+      safeFetchBuffer: async () => ({ buffer: gif, mimeType: 'image/gif' })
+    }
+  });
+  try {
+    const entries = await h2.fetchMediaData([{ kind: 'image', url: 'https://example.invalid/a.gif' }]);
+    check('frames 模式拆成多条图片', entries.length === 3, `${entries.length}`);
+    check('帧带顺序标注', entries.every((e, i) => String(e.text).includes(`第${i + 1}/3帧`)), JSON.stringify(entries.map((e) => e.text)));
+  } finally {
+    await h2.close();
+  }
+}
+
+// 6) 6 帧按 3×2 拼接，尺寸与说明正确。
+{
+  const mk = (i) => sharp({
+    create: { width: 96, height: 96, channels: 3, background: { r: i * 30, g: 100, b: 200 - i * 20 } }
+  }).png().toBuffer();
+  const frames = await Promise.all([0, 1, 2, 3, 4, 5].map(mk));
+  const gif = await sharp(frames, { join: { animated: true } }).gif().toBuffer();
+  const out = await prepareImage(gif, { animatedFrames: 6, animatedLayout: 'collage', tileWidth: 240 });
+  check('6 帧拼成一张', out.frames.length === 1 && out.collage === true);
+  check('3×2 网格说明', String(out.note).includes('3×2 网格'), out.note);
+  check('拼图尺寸合理', out.frames[0].width >= 3 * 240 && out.frames[0].height >= 2 * 240, `${out.frames[0].width}x${out.frames[0].height}`);
 }
 
 console.log(`\n结果：${passed} 通过，0 失败`);
