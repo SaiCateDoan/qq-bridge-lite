@@ -31,16 +31,16 @@ test('合法值原样使用；越界按 256KB / 40MB 截断；小数取整（saf
 test('桥接接线：发送与收藏表情用表情上限；图片识别与 qq_get_sticker_image 用 socialV2.media 上限', () => {
   const src = fs.readFileSync(path.join(root, 'src', 'bridge.js'), 'utf8');
   assert.match(src, /const MAX_MEDIA_BYTES = maxMediaBytesLimit;/, '图片识别上限来自 socialV2.media.maxBytes（r4）');
-  assert.match(src, /cfg\.socialV2\?\.media\?\.maxBytes[\s\S]{0,200}: 8 \* 1024 \* 1024/, '图片识别默认 8MB（r4）');
+  assert.match(src, /mediaInt\(cfg\.socialV2\?\.media\?\.maxBytes, 256 \* 1024, 20 \* 1024 \* 1024, 8 \* 1024 \* 1024\)/, '图片识别默认 8MB（r4）');
   assert.match(src, /image = await safeFetchBuffer\(url, stickerMaxBytes\(cfg\)\);/, '发送收藏表情用表情上限');
-  assert.match(src, /fetchOneBotImage\(media, \{ maxBytes: stickerMaxBytes\(cfg\) \}\)/, '收藏图片表情用表情上限');
+  assert.match(src, /fetchOneBotImage\(media, \{ maxBytes: stickerMaxBytes\(cfg\), compress: false \}\)/, '收藏图片表情用表情上限且不压缩原图');
   assert.match(src, /fetchFaceMedia\(media, \{ maxBytes: stickerMaxBytes\(cfg\) \}\)/, '收藏 QQ 表情用表情上限');
-  assert.match(src, /async function fetchOneBotImage\(media, \{ maxBytes = MAX_MEDIA_BYTES \} = \{\}\)/, '默认仍是图片识别上限');
+  assert.match(src, /async function fetchOneBotImage\(media, \{ maxBytes = MAX_MEDIA_BYTES, compress = true \} = \{\}\)/, '默认仍是图片识别上限且开启压缩');
   assert.match(src, /async function fetchFaceMedia\(media, \{ maxBytes = MAX_MEDIA_BYTES \} = \{\}\)/);
   // 图片识别路径（resolveMediaList）不传 maxBytes，按 socialV2.media 上限
   const resolve = src.slice(src.indexOf('async function resolveMediaList('), src.indexOf('async function resolveMediaList(') + 6000);
   assert.ok(!/maxBytes: stickerMaxBytes/.test(resolve), '图片识别路径不得使用表情上限');
-  assert.match(src, /safeFetchBuffer\(entry\.url, MAX_MEDIA_BYTES\)/, 'qq_get_sticker_image（给模型看图）用图片识别上限');
+  assert.match(src, /safeFetchBuffer\(entry\.url, MAX_MEDIA_FETCH_BYTES\)/, 'qq_get_sticker_image（给模型看图）先按下载上限取图，再压缩到图片识别上限');
   // 表情仍以桥接校验过的字节交给网关，不把 URL 交给网关重新抓取
   assert.match(src, /segments\.push\(\{ type: 'image', data: \{ file: 'base64:\/\/' \+ image\.buffer\.toString\('base64'\) \} \}\);/);
 });

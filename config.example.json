@@ -270,7 +270,15 @@
     "media": {
       "maxBytes": 8388608,
       "maxPixels": 64000000,
-      "maxCount": 5
+      "maxCount": 5,
+      "maxDownloadBytes": 25165824,
+      "maxDecodePixels": 100000000,
+      "maxLongEdge": 1280,
+      "quality": 82,
+      "animatedFrames": 6,
+      "frameLongEdge": 1024,
+      "frameBytes": 1048576,
+      "maxImageParts": 8
     }
   },
   "webSearch": {

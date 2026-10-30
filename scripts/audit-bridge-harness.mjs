@@ -205,6 +205,9 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
       };
     },
     cleanupTemp: () => {},
+    // 图片压缩模块依赖 sharp；VM 里没有真实模块，默认关闭，调用方可用 globals 覆盖。
+    hasImageCodec: () => false,
+    prepareImage: async () => null,
     // DSH 地址识别桩成离线：真实实现会查本机进程（lsof/netstat），装了 DSH 的机器上会找到真 DSH。
     resolveDshBaseUrl: async (configured) => ({ url: String(configured || '') || 'http://127.0.0.1:3080', auto: !configured, reachable: false, candidates: [] }),
     ...globals,

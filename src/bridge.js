@@ -22,6 +22,7 @@ import { SENSITIVE_RE } from './sensitive.js';
 import { looksLikeUnfinished } from './v2-wait.js';
 import { compactModelMessage } from './qq-model-view.js';
 import { safeFetchBuffer, looksLikeImageBuffer } from './safe-fetch.js';
+import { hasImageCodec, prepareImage } from './media-compress.js';
 import { stickerMaxBytes } from './lib/sticker-limits.mjs';
 import { AUDIO_EXTS, cleanupTemp, describeAudio, formatBytes, formatDuration, inspectAudio, listAudioFiles, parseTargetKey, processAudioVolume, resolveAudioProcessing, resolveAudioSource, safeJoinLibrary } from './send-voice-lib.js';
 import { discoverSnowLumaConnection, persistSnowLumaEndpoint, persistToken } from './snowluma-conn.js';
@@ -756,6 +757,14 @@ function loadConfig() {
     maxBytes: 8 * 1024 * 1024,
     maxPixels: 64_000_000,
     maxCount: 5,
+    maxDownloadBytes: 24 * 1024 * 1024,
+    maxDecodePixels: 100_000_000,
+    maxLongEdge: 1280,
+    quality: 82,
+    animatedFrames: 6,
+    frameLongEdge: 1024,
+    frameBytes: 1024 * 1024,
+    maxImageParts: 8,
     ...((cfg.socialV2?.media && typeof cfg.socialV2.media === 'object' && !Array.isArray(cfg.socialV2.media)) ? cfg.socialV2.media : {})
   };
 
@@ -1824,7 +1833,7 @@ async function main() {
     if (media?.kind === 'image') {
       // 优先取图片字节转 base64，避免 SnowLuma 直接下载聊天图片 URL 失败（带签名/防盗链）。
       // 严禁把消息里的原始 media.url / media.file 直接交给 OneBot 去下载：那会绕过 SSRF/本地文件防护。
-      const img = await fetchOneBotImage(media, { maxBytes: stickerMaxBytes(cfg) });
+      const img = await fetchOneBotImage(media, { maxBytes: stickerMaxBytes(cfg), compress: false });
       if (img?.buffer) {
         file = 'base64://' + img.buffer.toString('base64');
         validated = img;
@@ -4954,13 +4963,35 @@ async function main() {
           if (req.headers['x-agent-token'] && !modelCanSeeImages()) { sendJson({ ok: false, error: `当前模型 ${currentModelLabel()} 不能看图，表情图片不返回；请按表情的备注和标签使用` }, 409); return; }
           try {
             const entry = await getStickerImageData(stickerId);
-            const fetched = await safeFetchBuffer(entry.url, MAX_MEDIA_BYTES);
-            const dims = getImageDimensions(fetched.buffer);
+            const fetched = await safeFetchBuffer(entry.url, MAX_MEDIA_FETCH_BYTES);
+            let imageBuffer = fetched.buffer;
+            let mimeType = mimeFromBuffer(fetched.buffer) || mimeFromUrl(entry.url);
+            if (hasImageCodec()) {
+              try {
+                const prepared = await prepareImage(fetched.buffer, {
+                  maxBytes: MAX_MEDIA_BYTES,
+                  maxPixels: MAX_MEDIA_PIXELS,
+                  maxLongEdge: MAX_MEDIA_LONG_EDGE,
+                  quality: MEDIA_QUALITY,
+                  animatedFrames: MAX_ANIMATED_FRAMES,
+                  frameLongEdge: FRAME_LONG_EDGE,
+                  frameBytes: FRAME_BYTES,
+                  maxDecodePixels: MAX_MEDIA_DECODE_PIXELS
+                });
+                const first = prepared?.frames?.[0];
+                if (first?.buffer?.length) {
+                  imageBuffer = first.buffer;
+                  mimeType = first.mimeType || mimeType;
+                }
+              } catch (error) {
+                log(`表情图片压缩失败，按原图处理：${error?.message ?? error}`);
+              }
+            }
+            const dims = getImageDimensions(imageBuffer);
             if (dims && dims.width * dims.height > MAX_MEDIA_PIXELS) {
               sendJson({ ok: false, error: `表情图片像素超限（${dims.width}x${dims.height}），已拒绝` }, 400);
               return;
             }
-            const mimeType = mimeFromBuffer(fetched.buffer) || mimeFromUrl(entry.url);
             sendJson({
               ok: true,
               key,
@@ -4972,7 +5003,7 @@ async function main() {
                 url: entry.url,
                 md5: entry.md5
               },
-              image: { mimeType, data: fetched.buffer.toString('base64') }
+              image: { mimeType, data: imageBuffer.toString('base64') }
             });
           } catch (error) {
             sendJson({ ok: false, error: `获取表情图片失败：${error?.message ?? error}` }, 500);
@@ -6956,22 +6987,31 @@ async function main() {
   // 媒体上限（config.json 可调，但必须收敛到安全区间）：
   //   maxBytes  —— 单条消息里图片/表情的总字节上限。8MB 能覆盖绝大多数动图表情；
   //                太大会让 base64 常驻内存（×1.33）并拖慢 DSH 上传。
-  //   maxPixels —— 单张图解码像素上限（防图片炸弹），与 DSH 的 64MP 默认一致。
-  //   maxCount  —— 单条消息最多处理几张（防止一次 @ 带 20 张图把模型上下文撑爆）。
-  const maxMediaBytesLimit = (() => {
-    const n = Number(cfg.socialV2?.media?.maxBytes);
-    return Number.isFinite(n) && n > 0 ? Math.min(20 * 1024 * 1024, Math.max(256 * 1024, Math.round(n))) : 8 * 1024 * 1024;
-  })();
-  const MAX_MEDIA_COUNT = (() => {
-    const n = Number(cfg.socialV2?.media?.maxCount);
-    return Number.isFinite(n) && n > 0 ? Math.min(8, Math.max(1, Math.round(n))) : 5;
-  })();
+  //   maxPixels —— 压缩后的单张像素上限（防图片炸弹；超限原图会先降采样再送模型）。
+  //   maxCount  —— 单条消息最多处理几个媒体条目（防止一次 @ 带 20 张图把模型上下文撑爆）。
+  //   maxDownloadBytes —— 压缩前允许下载的原图上限；超过的图不再“直接丢弃”，而是尽可能压缩。
+  //   animatedFrames / frameLongEdge / frameBytes —— 动图抽帧的数量、单帧长边与单帧字节预算。
+  const mediaInt = (value, min, max, fallback) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : fallback;
+  };
+  const maxMediaBytesLimit = mediaInt(cfg.socialV2?.media?.maxBytes, 256 * 1024, 20 * 1024 * 1024, 8 * 1024 * 1024);
+  const MAX_MEDIA_COUNT = mediaInt(cfg.socialV2?.media?.maxCount, 1, 8, 5);
   const MAX_MEDIA_BYTES = maxMediaBytesLimit; // 单条消息图片总字节上限
-  const MAX_MEDIA_PIXELS = (() => {
-    const n = Number(cfg.socialV2?.media?.maxPixels);
-    return Number.isFinite(n) && n > 0 ? Math.min(64_000_000, Math.max(1_000_000, Math.round(n))) : 64_000_000;
-  })(); // 单张图片像素上限，防止“图片炸弹”解码拖垮 DSH
+  const MAX_MEDIA_PIXELS = mediaInt(cfg.socialV2?.media?.maxPixels, 1_000_000, 64_000_000, 64_000_000);
+  const MAX_MEDIA_FETCH_BYTES = mediaInt(cfg.socialV2?.media?.maxDownloadBytes, MAX_MEDIA_BYTES, 32 * 1024 * 1024, 24 * 1024 * 1024);
+  const MAX_MEDIA_DECODE_PIXELS = mediaInt(cfg.socialV2?.media?.maxDecodePixels, 64_000_000, 150_000_000, 100_000_000);
+  const MAX_MEDIA_LONG_EDGE = mediaInt(cfg.socialV2?.media?.maxLongEdge, 512, 2048, 1280);
+  const MEDIA_QUALITY = mediaInt(cfg.socialV2?.media?.quality, 55, 95, 82);
+  const MAX_ANIMATED_FRAMES = mediaInt(cfg.socialV2?.media?.animatedFrames, 1, 10, 6);
+  const FRAME_LONG_EDGE = mediaInt(cfg.socialV2?.media?.frameLongEdge, 512, 1600, 1024);
+  const FRAME_BYTES = mediaInt(cfg.socialV2?.media?.frameBytes, 128 * 1024, 4 * 1024 * 1024, 1024 * 1024);
+  const MAX_IMAGE_PARTS = mediaInt(cfg.socialV2?.media?.maxImageParts, 1, 12, 8);
   const MAX_MEDIA_STORE_PER_KEY = 500; // 每个会话最多缓存多少条消息的媒体元数据，防止无限增长
+
+  if (!hasImageCodec()) {
+    log('⚠️ 未安装 sharp：大图压缩与动图抽帧不可用，超限图片仍会被跳过；运行 npm ci 安装依赖');
+  }
 
   function isSafeLocalMediaPath(filePath) {
     try {
@@ -7017,15 +7057,15 @@ async function main() {
     return match[2];
   }
 
-  /** 校验一张图片字节：格式、大小（调用方已限）、像素上限；不通过返回 null。 */
-  function acceptImageBuffer(buf, label = '图片') {
+  /** 校验一张图片字节：格式、像素上限；超限只拦下明显不合理的解码炸弹，压缩交给 prepareImage。 */
+  function acceptImageBuffer(buf, label = '图片', { maxPixels = MAX_MEDIA_PIXELS } = {}) {
     if (!buf || !buf.length) return null;
     if (!looksLikeImageBuffer(buf)) {
       log(`${label}不是有效图片（PNG/JPEG/GIF/WebP），已跳过`);
       return null;
     }
     const dims = getImageDimensions(buf);
-    if (dims && dims.width * dims.height > MAX_MEDIA_PIXELS) {
+    if (dims && dims.width * dims.height > maxPixels) {
       log(`${label}像素超限，已跳过（${dims.width}x${dims.height}）`);
       return null;
     }
@@ -7033,7 +7073,8 @@ async function main() {
   }
 
   // maxBytes：默认是图片识别的上限（socialV2.media.maxBytes）；收藏表情时传入 socialV2.sticker.maxBytes（本仓库增强）。
-  async function fetchOneBotImage(media, { maxBytes = MAX_MEDIA_BYTES } = {}) {
+  // compress=false 用于收藏/转发原始表情：那条路要原图，不能为了模型识图把文件压小。
+  async function fetchOneBotImage(media, { maxBytes = MAX_MEDIA_BYTES, compress = true } = {}) {
     // 表情包（市场/收藏表情）优先走 CDN：get_image 对市场表情必然失败
     // （SnowLuma 缓存里没有该文件），先试 URL 能省一次失败往返，也更可靠。
     // 只有真的是表情才按表情处理：kind=sticker（mface 市场表情）、带 emoji_id（字段或「前缀-id」文件名）、sub_type=1。
@@ -7041,6 +7082,9 @@ async function main() {
     const emojiId = String(media.emojiId || emojiIdFromFileName(media.file) || '');
     const isSticker = media.kind === 'sticker' || !!emojiId || String(media.subType || '') === '1';
     const label = isSticker ? '表情' : '图片';
+    // 压缩前允许下载更大的原图：旧逻辑直接按 8MB 上限下载，大图连压缩的机会都没有。
+    const fetchMax = compress ? Math.max(maxBytes, MAX_MEDIA_FETCH_BYTES) : maxBytes;
+    const admitPixels = compress ? MAX_MEDIA_DECODE_PIXELS : MAX_MEDIA_PIXELS;
     const failures = [];
     const urls = [];
     const pushUrl = (raw) => {
@@ -7054,8 +7098,8 @@ async function main() {
     const tryUrls = async () => {
       for (const url of urls) {
         try {
-          const fetched = await safeFetchBuffer(url, maxBytes);
-          const accepted = acceptImageBuffer(fetched.buffer, `${label} URL `);
+          const fetched = await safeFetchBuffer(url, fetchMax);
+          const accepted = acceptImageBuffer(fetched.buffer, `${label} URL `, { maxPixels: admitPixels });
           if (accepted) return { ...accepted, mimeType: accepted.mimeType || mimeFromUrl(url) };
           failures.push(`${url} 不是有效图片`);
         } catch (error) {
@@ -7074,8 +7118,8 @@ async function main() {
         const base64 = base64FromMaybe(obj.data) || base64FromMaybe(obj.base64) || base64FromMaybe(obj.file);
         if (base64) {
           // 粗略估计 base64 解码后大小，超限直接拒绝，避免超大字符串撑爆内存
-          if (base64.length * 3 / 4 <= maxBytes) {
-            const accepted = acceptImageBuffer(Buffer.from(base64, 'base64'), 'get_image 返回的图片');
+          if (base64.length * 3 / 4 <= fetchMax) {
+            const accepted = acceptImageBuffer(Buffer.from(base64, 'base64'), 'get_image 返回的图片', { maxPixels: admitPixels });
             if (accepted) return accepted;
           } else {
             log(`get_image 返回的图片 base64 超限，已跳过（${Math.round(base64.length * 3 / 4 / 1024)}KB）`);
@@ -7083,8 +7127,8 @@ async function main() {
         }
         if (obj.url) {
           try {
-            const fetched = await safeFetchBuffer(String(obj.url), maxBytes);
-            const accepted = acceptImageBuffer(fetched.buffer, 'get_image URL 图片');
+            const fetched = await safeFetchBuffer(String(obj.url), fetchMax);
+            const accepted = acceptImageBuffer(fetched.buffer, 'get_image URL 图片', { maxPixels: admitPixels });
             if (accepted) return { ...accepted, mimeType: accepted.mimeType || mimeFromUrl(obj.url) };
           } catch (error) {
             failures.push(`get_image url: ${error?.message ?? error}`);
@@ -7092,10 +7136,10 @@ async function main() {
         }
         if (typeof obj.file === 'string' && !obj.file.startsWith('base64://') && fs.existsSync(obj.file) && isSafeLocalMediaPath(obj.file)) {
           const stat = fs.statSync(obj.file);
-          if (stat.size > maxBytes) {
+          if (stat.size > fetchMax) {
             log(`本地图片文件超限，已跳过（${Math.round(stat.size / 1024)}KB）`);
           } else {
-            const accepted = acceptImageBuffer(fs.readFileSync(obj.file), '本地图片');
+            const accepted = acceptImageBuffer(fs.readFileSync(obj.file), '本地图片', { maxPixels: admitPixels });
             if (accepted) return accepted;
           }
         }
@@ -7108,11 +7152,40 @@ async function main() {
     const result = isSticker
       ? (await tryUrls()) ?? (await tryGetImage())
       : (await tryGetImage()) ?? (await tryUrls());
-    if (result) return result;
-    if (failures.length) {
-      log(`[media] ${label}获取失败（${failures.length} 次尝试）：${failures.slice(0, 3).join(' | ')}`);
+    if (!result) {
+      if (failures.length) {
+        log(`[media] ${label}获取失败（${failures.length} 次尝试）：${failures.slice(0, 3).join(' | ')}`);
+      }
+      return null;
     }
-    return null;
+    if (!compress || !hasImageCodec()) return result;
+
+    try {
+      const prepared = await prepareImage(result.buffer, {
+        maxBytes: MAX_MEDIA_BYTES,
+        maxPixels: MAX_MEDIA_PIXELS,
+        maxLongEdge: MAX_MEDIA_LONG_EDGE,
+        quality: MEDIA_QUALITY,
+        animatedFrames: MAX_ANIMATED_FRAMES,
+        frameLongEdge: FRAME_LONG_EDGE,
+        frameBytes: FRAME_BYTES,
+        maxDecodePixels: MAX_MEDIA_DECODE_PIXELS
+      });
+      if (prepared?.frames?.length) {
+        const first = prepared.frames[0];
+        return {
+          buffer: first.buffer,
+          mimeType: first.mimeType,
+          frames: prepared.frames,
+          animated: prepared.animated,
+          originalBytes: result.buffer.length
+        };
+      }
+    } catch (error) {
+      // 压缩失败不应该让整条消息失明：退回原来的图片字节（仍受下载上限保护）。
+      log(`[media] ${label}压缩失败，按原图处理：${error?.message ?? error}`);
+    }
+    return result;
   }
 
   async function fetchFaceMedia(media, { maxBytes = MAX_MEDIA_BYTES } = {}) {
@@ -7141,12 +7214,23 @@ async function main() {
     return { text: fallbackText };
   }
 
+  function imageFramesOf(img) {
+    if (Array.isArray(img?.frames) && img.frames.length) return img.frames;
+    if (img?.buffer) return [{ buffer: img.buffer, mimeType: img.mimeType || 'image/jpeg', page: 0 }];
+    return [];
+  }
+
+  function imageExt(mimeType) {
+    return String(mimeType || 'image/webp').split('/')[1] || 'webp';
+  }
+
   async function resolveMediaList(mediaList) {
     // 当前模型不能看图（或未知）：不下载图片，直接换成文字占位，避免整条消息被 DSH 拒绝
     if (!modelCanSeeImages()) return mediaTextParts(Array.isArray(mediaList) ? mediaList.slice(0, MAX_MEDIA_COUNT) : [], currentModelLabel());
     const parts = [];
     let index = 0;
     let totalBytes = 0;
+    let imageParts = 0;
     for (const media of Array.isArray(mediaList) ? mediaList : []) {
       index += 1;
       if (index > MAX_MEDIA_COUNT) {
@@ -7157,32 +7241,55 @@ async function main() {
       if (media.kind === 'face') {
         const face = await fetchFaceMedia(media);
         if (face.buffer) {
+          if (imageParts >= MAX_IMAGE_PARTS) {
+            parts.push({ type: 'text', text: `[表情${index}（超过单条图片数量上限 ${MAX_IMAGE_PARTS}，已跳过）]` });
+            continue;
+          }
           if (totalBytes + face.buffer.length > MAX_MEDIA_BYTES) {
             parts.push({ type: 'text', text: `[表情${index}（图片总大小超限，已跳过）]` });
             continue;
           }
+          imageParts += 1;
           totalBytes += face.buffer.length;
           if (face.text) parts.push({ type: 'text', text: face.text });
-          parts.push({ type: 'image', mediaType: face.mimeType || 'image/png', data: face.buffer.toString('base64'), name: `face-${media.faceId}.${(face.mimeType || 'png').split('/')[1]}` });
+          parts.push({ type: 'image', mediaType: face.mimeType || 'image/png', data: face.buffer.toString('base64'), name: `face-${media.faceId}.${imageExt(face.mimeType || 'image/png')}` });
         } else {
           parts.push({ type: 'text', text: face.text || `[表情#${media.faceId}]` });
         }
-      } else {
-        const img = await fetchOneBotImage(media);
-        const sticker = media.kind === 'sticker';
-        const summary = sticker && media.summary ? `:${String(media.summary).slice(0, 20)}` : '';
-        const label = sticker ? (summary ? `[表情${summary}]` : `[表情${index}]`) : `[图片${index}]`;
-        if (img?.buffer) {
-          if (totalBytes + img.buffer.length > MAX_MEDIA_BYTES) {
-            parts.push({ type: 'text', text: `${label}（图片总大小超限，已跳过）` });
-            continue;
-          }
-          totalBytes += img.buffer.length;
-          parts.push({ type: 'text', text: label });
-          parts.push({ type: 'image', mediaType: img.mimeType || 'image/jpeg', data: img.buffer.toString('base64'), name: `qq-${sticker ? 'sticker' : 'image'}-${index}.${(img.mimeType || 'image/jpeg').split('/')[1]}` });
-        } else {
-          parts.push({ type: 'text', text: `${label}（获取失败）` });
+        continue;
+      }
+
+      const sticker = media.kind === 'sticker';
+      const summary = sticker && media.summary ? `:${String(media.summary).slice(0, 20)}` : '';
+      const baseLabel = sticker ? (summary ? `[表情${summary}]` : `[表情${index}]`) : `[图片${index}]`;
+      const img = await fetchOneBotImage(media);
+      const frames = imageFramesOf(img);
+      if (!frames.length) {
+        parts.push({ type: 'text', text: `${baseLabel}（获取失败）` });
+        continue;
+      }
+      const animated = !!img?.animated && frames.length > 1;
+      for (let f = 0; f < frames.length; f += 1) {
+        const frame = frames[f];
+        if (imageParts >= MAX_IMAGE_PARTS) {
+          parts.push({ type: 'text', text: `${baseLabel}（超过单条图片数量上限 ${MAX_IMAGE_PARTS}，已跳过）` });
+          break;
         }
+        if (totalBytes + frame.buffer.length > MAX_MEDIA_BYTES) {
+          parts.push({ type: 'text', text: `${baseLabel}（图片总大小超限，已跳过）` });
+          break;
+        }
+        imageParts += 1;
+        totalBytes += frame.buffer.length;
+        const label = animated ? `${baseLabel} 动图第${f + 1}/${frames.length}帧` : baseLabel;
+        const mimeType = frame.mimeType || 'image/webp';
+        parts.push({ type: 'text', text: label });
+        parts.push({
+          type: 'image',
+          mediaType: mimeType,
+          data: frame.buffer.toString('base64'),
+          name: `qq-${sticker ? 'sticker' : 'image'}-${index}-${f + 1}.${imageExt(mimeType)}`
+        });
       }
     }
     return parts;
@@ -7192,25 +7299,31 @@ async function main() {
     // 工具查询图片同理：不能看图时只返回文字条目（不带 data），MCP 端会显示成文字
     if (!modelCanSeeImages()) return mediaTextEntries(Array.isArray(mediaList) ? mediaList.slice(0, MAX_MEDIA_COUNT) : [], currentModelLabel());
     const out = [];
-    let index = 0;
+    let mediaIndex = 0;
     let totalBytes = 0;
+    let imageParts = 0;
     for (const media of Array.isArray(mediaList) ? mediaList : []) {
-      index += 1;
-      if (index > MAX_MEDIA_COUNT) {
-        out.push({ index, kind: media?.kind === 'face' ? 'face' : (media?.kind === 'sticker' ? 'sticker' : 'image'), text: `（超过单条上限 ${MAX_MEDIA_COUNT}，已跳过）` });
+      mediaIndex += 1;
+      if (mediaIndex > MAX_MEDIA_COUNT) {
+        out.push({ index: mediaIndex, kind: media?.kind === 'face' ? 'face' : (media?.kind === 'sticker' ? 'sticker' : 'image'), text: `（超过单条上限 ${MAX_MEDIA_COUNT}，已跳过）` });
         continue;
       }
       if (!media || typeof media !== 'object') continue;
       if (media.kind === 'face') {
         const face = await fetchFaceMedia(media);
         if (face.buffer) {
-          if (totalBytes + face.buffer.length > MAX_MEDIA_BYTES) {
-            out.push({ index, kind: 'face', faceId: media.faceId ? String(media.faceId) : undefined, text: '（图片总大小超限，已跳过）' });
+          if (imageParts >= MAX_IMAGE_PARTS) {
+            out.push({ index: imageParts + 1, kind: 'face', faceId: media.faceId ? String(media.faceId) : undefined, text: `（超过单条图片数量上限 ${MAX_IMAGE_PARTS}，已跳过）` });
             continue;
           }
+          if (totalBytes + face.buffer.length > MAX_MEDIA_BYTES) {
+            out.push({ index: imageParts + 1, kind: 'face', faceId: media.faceId ? String(media.faceId) : undefined, text: '（图片总大小超限，已跳过）' });
+            continue;
+          }
+          imageParts += 1;
           totalBytes += face.buffer.length;
           out.push({
-            index,
+            index: imageParts,
             kind: 'face',
             faceId: media.faceId ? String(media.faceId) : undefined,
             mimeType: face.mimeType || 'image/png',
@@ -7218,36 +7331,48 @@ async function main() {
             text: face.text || ''
           });
         } else {
-          out.push({ index, kind: 'face', faceId: media.faceId ? String(media.faceId) : undefined, text: face.text || `[表情#${media.faceId}]` });
+          out.push({ index: mediaIndex, kind: 'face', faceId: media.faceId ? String(media.faceId) : undefined, text: face.text || `[表情#${media.faceId}]` });
         }
-      } else {
-        const img = await fetchOneBotImage(media);
-        const kind = media.kind === 'sticker' ? 'sticker' : 'image';
-        const noun = kind === 'sticker' ? '表情' : '图片';
-        const base = {
-          index,
-          kind,
-          ...(media.file ? { file: String(media.file) } : {}),
-          ...(media.url ? { url: String(media.url) } : {}),
-          ...(media.emojiId ? { emojiId: String(media.emojiId) } : {}),
-          ...(media.summary ? { summary: String(media.summary) } : {}),
-          ...(media.subType ? { subType: String(media.subType) } : {})
-        };
-        if (img?.buffer) {
-          if (totalBytes + img.buffer.length > MAX_MEDIA_BYTES) {
-            out.push({ ...base, text: `（${noun}总大小超限，已跳过）` });
-            continue;
-          }
-          totalBytes += img.buffer.length;
-          out.push({
-            ...base,
-            mimeType: img.mimeType || 'image/jpeg',
-            data: img.buffer.toString('base64'),
-            text: ''
-          });
-        } else {
-          out.push({ ...base, text: `（${noun}获取失败）` });
+        continue;
+      }
+
+      const kind = media.kind === 'sticker' ? 'sticker' : 'image';
+      const noun = kind === 'sticker' ? '表情' : '图片';
+      const base = {
+        kind,
+        ...(media.file ? { file: String(media.file) } : {}),
+        ...(media.url ? { url: String(media.url) } : {}),
+        ...(media.emojiId ? { emojiId: String(media.emojiId) } : {}),
+        ...(media.summary ? { summary: String(media.summary) } : {}),
+        ...(media.subType ? { subType: String(media.subType) } : {})
+      };
+      const img = await fetchOneBotImage(media);
+      const frames = imageFramesOf(img);
+      if (!frames.length) {
+        out.push({ ...base, index: mediaIndex, text: `（${noun}获取失败）` });
+        continue;
+      }
+      const animated = !!img?.animated && frames.length > 1;
+      for (let f = 0; f < frames.length; f += 1) {
+        const frame = frames[f];
+        if (imageParts >= MAX_IMAGE_PARTS) {
+          out.push({ ...base, index: imageParts + 1, text: `（超过单条图片数量上限 ${MAX_IMAGE_PARTS}，已跳过）` });
+          break;
         }
+        if (totalBytes + frame.buffer.length > MAX_MEDIA_BYTES) {
+          out.push({ ...base, index: imageParts + 1, text: `（${noun}总大小超限，已跳过）` });
+          break;
+        }
+        imageParts += 1;
+        totalBytes += frame.buffer.length;
+        out.push({
+          ...base,
+          index: imageParts,
+          mimeType: frame.mimeType || 'image/webp',
+          data: frame.buffer.toString('base64'),
+          text: animated ? `动图第${f + 1}/${frames.length}帧` : '',
+          ...(animated ? { frame: { index: f + 1, total: frames.length, delayMs: frame.delay ?? null } } : {})
+        });
       }
     }
     return out;

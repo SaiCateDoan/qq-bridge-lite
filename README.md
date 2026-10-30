@@ -53,6 +53,7 @@
 | 跨群协作 | 默认关闭；有向授权，只给统计不给内容 | 同上 |
 | 单一运行链路 | 只保留 `reserved2` 二代仿真：删掉 chat / closed-agent / 一代仿真三套模式、审批与 TOTP 管理面 | 本 README |
 | QQ 提示词 | 控制台只有一个「QQ 提示词」页：编辑整套行为提示词、随时恢复默认预设；人设由 harness 全局提示词提供 | 本 README |
+| 大图与动图 | 过大图片不再直接丢弃：sharp/WebP 自适应压缩；动图均匀抽帧成多张静态图，按帧标注顺序；单条预算 8MB / 8 张 | [CONFIGURATION.md](docs/guides/CONFIGURATION.md) |
 | 控制台选模型 | 提供方 / 模型 / 思考强度三个联动下拉，选项来自 DSH 模型目录，保存即生效；第三方提供方提示隐私、不能看图的模型自动把图片转文字 | [CONFIGURATION.md](docs/guides/CONFIGURATION.md) |
 | 引用合并转发（v1.0.3） | 引用一条较早的合并转发时不再卡住整条消息；AI 能打开引用里的转发（含嵌套），读取结果缓存 | [CHANGELOG.md](CHANGELOG.md) |
 | DSH 0.2.1 | 兼容 0.2.0-rc.2 与 0.2.1；0.2.1 桌面版的随机端口自动识别、DSH 重启后自动跟上 | [DSH_020_ADAPTATION.md](docs/guides/DSH_020_ADAPTATION.md) |
@@ -423,7 +424,7 @@ SnowLuma 同一个账号的 **HTTP token（默认 3000 端口）与 WebSocket to
 ## 已知限制
 
 - agent 回复在回合结束时一次性发送（不做流式逐字转发）；回复超过 `socialV2.send.maxMessageChars`（默认 500 字，可用 `social.maxReplyChars` 调整）自动按句读/URL 边界分段
-- 图片及部分表情可以通过安全下载接入多模态模型；语音/视频以及无法取得图片字节的消息仍使用占位文本
+- 图片及部分表情可以通过安全下载接入多模态模型；超大图会先压缩，动图会均匀抽帧成多张带序号的静态图。语音/视频以及确实拿不到图片字节的消息仍使用占位文本
 - **发**语音是支持的（独立工具的图形界面 / 命令行 / AI 工具，见 `docs/README.md` 的文档索引）；但**收**到的语音目前只显示占位文本，不做语音转写入上下文
 - **AI 发语音默认关闭**（`socialV2.voice.enabled` 与 `tools.sendVoice` 默认 `false`）：先把音频放进 `audio/`，再到控制台打开开关；你自己发语音不受这个开关影响
 - agent 的 Markdown 回复会转成纯文本（链接保留 `文字 (url)` 形式）
