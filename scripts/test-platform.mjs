@@ -38,7 +38,13 @@ async function until(fn, ms = 8000, what = '条件') {
 test('① 接口平台自身测试全部通过', { skip: SKIP }, () => {
   const r = spawnSync(process.execPath, ['--test', '--test-timeout=30000', 'test/units.test.mjs', 'test/e2e.test.mjs'], { cwd: PLATFORM_DIR, encoding: 'utf8', timeout: 120_000 });
   const summary = (r.stdout ?? '').split('\n').filter((l) => /^(#|ℹ) (tests|pass|fail)/.test(l)).join(' / ');
-  assert.equal(r.status, 0, `${summary}\n${(r.stdout ?? '').split('\n').filter((l) => /^not ok|error:|expected|actual/.test(l)).join('\n')}${r.stderr ?? ''}`);
+  // 失败时保留完整尾部：Node 的 reporter 格式随版本变化，按行过滤容易只剩摘要，
+  // 之前就是因此看不到具体是哪个 e2e 子测试在竞态。
+  const tail = (text, max = 6000) => {
+    const s = String(text ?? '');
+    return s.length > max ? `…（截断）\n${s.slice(-max)}` : s;
+  };
+  assert.equal(r.status, 0, `${summary}\n${tail(r.stdout)}${tail(r.stderr, 2000)}`);
   assert.match(summary, /(?:#|ℹ) fail 0/);
   assert.match(summary, /(?:#|ℹ) pass [1-9]/);
 });
