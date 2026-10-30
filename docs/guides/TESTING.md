@@ -49,9 +49,6 @@ node scripts/test-preset-local-tools.mjs
 
 | 项 | 怎么验证 |
 | --- | --- |
-| DSH 权限预设目录含 qq-full-ask、`commands/execute "/permission …"` 生效、prompt 不执行斜杠命令、qq-agent-readonly 已加载 | `npm run probe:permission`（需 DSH 运行） |
-| L1 守卫确实收到 `profile: readonly-agent` 配置 | L1 下让 Agent 尝试写一个文件，应被「不在 L1 只读 Agent 白名单内」拒绝 |
 | SnowLuma 实际推送的成员通知字段 | `npm run probe:member-events -- 300`（只读、默认打码） |
-| 入群唤醒、熟人认出、审批消息里的参数展示、TOTP 端到端、自动回落 | 见 [../DSH_DEPLOYMENT.md](../DSH_DEPLOYMENT.md) 第 12 节 |
-| **L2/L3 审批闸门在真实 DSH 上是否弹审批** | L2 下让 Agent 执行 `dir`，必须先收到「🔐 审批 #n」 |
-| 控制台新增的级别选择 / 紧急关闭按钮 | 浏览器手测（Playwright 回归 `npm run test:console-ui` 的基线未重录，见已知问题） |
+| 入群唤醒、熟人认出、群规/托付 | 见 [../DSH_DEPLOYMENT.md](../DSH_DEPLOYMENT.md) 的验证清单 |
+| 控制台「QQ 提示词」保存/恢复默认 | `npm run test-console`（需桥接在 3100 运行），或页面上保存一次再点「恢复默认预设」 |

@@ -1,6 +1,14 @@
-# QQ ↔ DeepSeek Harness 桥接
+# QQ ↔ DeepSeek Harness 桥接（个人自用轻量版）
 
-**支持系统：Windows · macOS · Linux**（qq-bridge-enhanced v1.0.3）
+> ⚠️ **个人自用轻量版 / Personal lightweight build**
+>
+> 这个仓库是作者自己用的精简分支，基于 qq-bridge-enhanced v1.0.3 修改，**不是**面向所有人的通用发行版：
+> 只保留 `reserved2` 二代仿真一条链路，其余模式、管理面、角色卡都已删除；接口与行为**不保证向后兼容**，
+> 也不提供通用支持。想要完整功能请回到上游 / 原增强版。
+>
+> 改动范围：`bridge.js` 从 13,195 行精简到约 10,730 行；离线回归 `npm run test:audit`（53 个脚本）。
+
+**支持系统：Windows · macOS · Linux**（基于 qq-bridge-enhanced v1.0.3）
 
 **English**: [README.en.md](README.en.md) | **中文**: [README.md](README.md)
 
@@ -10,15 +18,29 @@
 >
 > 🎤 独立的「发语音」工具已拆到仓库上一级的 **`../voice-tool/`**（命令行 `voice-cli.mjs` / 图形界面 `voice-gui.mjs`），不再依赖 qq-bridge 运行。
 
-把 QQ 消息接入 DSH agent：QQ 好友/群发来的消息会变成 DSH 会话里的用户消息，agent 的回复（含提问、工具审批）会发回 QQ。
+把 QQ 消息接入 DSH agent：QQ 好友/群发来的消息会变成 DSH 会话里的用户消息，agent 的回复（含提问）会发回 QQ。
 
 ---
 
-## 🆕 增强版（qq-bridge-enhanced v1.0.3）—— 支持 Windows、macOS、Linux
+## 🆕 个人自用轻量版（基于 qq-bridge-enhanced v1.0.3）
 
-> 本仓库是 [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge) v0.2.0-r3 的二次开发版本（来源与授权见 [NOTICE.md](NOTICE.md)），已合并上游 r4 的修复。
-> 原版的全部功能（消息桥接、多群白名单、reserved2 二代仿真、QQ 自主工具、人格、控制台、安全守卫、令牌统计、MCP、SnowLuma 健康检查）保持不变；
-> 下文「QQ ↔ DeepSeek Harness 桥接」之后的内容是上游原文档，仍然适用（部署请以本节和 [docs/DSH_DEPLOYMENT.md](docs/DSH_DEPLOYMENT.md) 为准）。
+> 本仓库是 [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge) v0.2.0-r3 的二次开发版本（来源与授权见 [NOTICE.md](NOTICE.md)），并在此之上做了**个人自用的减法**：
+> 只保留 `reserved2` 二代仿真，删掉多模式/管理面/角色卡，把维护面压缩到「一条链路 + 一套提示词」。
+> 下文「QQ ↔ DeepSeek Harness 桥接」之后的内容是上游原文档，其中 chat / closed-agent / 一代仿真 / 角色卡 等章节已不适用，以本节为准。
+
+### 轻量版改了什么
+
+| 保留 | 移除 |
+| --- | --- |
+| `reserved2` 二代仿真：工具自主收发、唤醒/潜水、群聊记忆、黑话、表情、语音、合并转发 | `chat` / `reserved`（一代仿真）/ `closed-agent`（运维 Agent）三种模式 |
+| 单套「QQ 提示词」+ 一键恢复默认 | owner 管理通道、L1~L3 权限分级、审批、TOTP、模式切换、`qq-mode-console` 插件 |
+| 控制台：总览 / 会话 / QQ 提示词 / 二代仿真 / 黑话 / 令牌 / 安全 / 运维 / 参考 | 人格卡 `roles/`、每轮注入、`/role` `/silent` 等命令 |
+| 人物库、群规、owner 私聊托付、接口平台、控制中心 | 一代社交状态机与自动转发（死代码已清） |
+
+- **人设不再由桥接注入**：AI 是谁由 harness 全局提示词（`dsh-context` 的 `promptSuffix`）提供，QQ 与 GUI 是同一个自己；桥接只负责 QQ 场景的行为规则。
+- **提示词只有一个来源**：`dsh/agent-presets/qq-chat-v2/agent.cordis.yml`。控制台保存会同步重生成 `plugins/qq-agent-presets/presets/qq-chat-v2.patch.yml`，**改完必须重启 DSH**；改坏了点「恢复默认预设」。
+- **从旧版升级**：重启 DSH → 从控制中心启动桥接 →（必要时）重置 QQ 会话。`config.json` 里残留的 `role` / `admin` / `social` / `socialV2.tools.requestMode` 会被忽略，可以手工删掉。
+- **回归**：`npm run test:audit`（53 个脚本；`test-platform` 偶发超时，单独重跑即过）。
 
 | 新功能 | 一句话 | 文档 |
 | --- | --- | --- |
@@ -29,11 +51,8 @@
 | 分层人物记忆 | 群内 / 私聊 / 全局；默认只跨群共享「是同一个人」，可见范围在注入时由程序过滤 | 同上 |
 | 入群感知 | 新人、熟人进新群、退群回归分别识别并唤醒 AI；首次部署不把老成员当新人 | 同上 |
 | 跨群协作 | 默认关闭；有向授权，只给统计不给内容 | 同上 |
-| owner 管理通道 | 私聊 `/mode agent L1~L3` → 确认码 →（L3 再加 TOTP）→ 切换；`/panic` 一键回落 | [ADMIN_CHANNEL.md](docs/guides/ADMIN_CHANNEL.md) |
-| 权限分级 | L0 群友 / L1 只读 Agent / L2 工作区读写 / L3 完全访问但每次审批；不存在免审批模式 | 同上 |
-| 审批增强 | 编号 `#n`、展示真实命令参数、并发不覆盖、超时自动拒绝 | 同上 |
-| 自动回落与审计 | 高权限闲置 30 分钟回落；每次变更私聊通知；哈希链审计日志 | 同上 |
-| 切换不失忆（v1.0.3） | 切到 agent 时群和私聊原来的会话休眠、回落后原样接着用；agent 会话能接上私聊话题（桥接注入交接，只含私聊、已脱敏）；高权限会话照常归档 | [ADMIN_CHANNEL.md](docs/guides/ADMIN_CHANNEL.md) |
+| 单一运行链路 | 只保留 `reserved2` 二代仿真：删掉 chat / closed-agent / 一代仿真三套模式、审批与 TOTP 管理面 | 本 README |
+| QQ 提示词 | 控制台只有一个「QQ 提示词」页：编辑整套行为提示词、随时恢复默认预设；人设由 harness 全局提示词提供 | 本 README |
 | 控制台选模型 | 提供方 / 模型 / 思考强度三个联动下拉，选项来自 DSH 模型目录，保存即生效；第三方提供方提示隐私、不能看图的模型自动把图片转文字 | [CONFIGURATION.md](docs/guides/CONFIGURATION.md) |
 | 引用合并转发（v1.0.3） | 引用一条较早的合并转发时不再卡住整条消息；AI 能打开引用里的转发（含嵌套），读取结果缓存 | [CHANGELOG.md](CHANGELOG.md) |
 | DSH 0.2.1 | 兼容 0.2.0-rc.2 与 0.2.1；0.2.1 桌面版的随机端口自动识别、DSH 重启后自动跟上 | [DSH_020_ADAPTATION.md](docs/guides/DSH_020_ADAPTATION.md) |
@@ -55,7 +74,7 @@ NapCat 要在它的 WebUI 里开启 WebSocket 服务端 `127.0.0.1:3001`）。�
 | 装到 DSH | `node scripts\setup-dsh.mjs`，然后**重启 DSH** | `node scripts/setup-dsh.mjs`，然后**重启 DSH** |
 | 无窗口入口 | 已自带 `control-center-hidden.vbs` | **macOS**：双击一次 `control-center.command`，第一次运行会自动生成「QQ Bridge 控制中心.app」并在访达里选中它（也可以手动 `npm run mac-app`）<br>**Linux**：`npm run linux-service -- --enable`，生成并启动 systemd 用户服务（后台常驻、登录自动启动） |
 
-`snowluma.*`（连接 QQ 后端的地址、令牌）不用手填，下面「接入桥接」会自动写好。可选：`npm run test:audit` 离线自检、`npm run admin:totp-setup`（L3 的 TOTP）。
+`snowluma.*`（连接 QQ 后端的地址、令牌）不用手填，下面「接入桥接」会自动写好。可选：`npm run test:audit` 离线自检。
 
 **第一次启动**：
 
@@ -76,14 +95,14 @@ NapCat 要在它的 WebUI 里开启 WebSocket 服务端 `127.0.0.1:3001`）。�
 配置字段：[docs/guides/CONFIGURATION.md](docs/guides/CONFIGURATION.md)。测试：[docs/guides/TESTING.md](docs/guides/TESTING.md)。
 变更：[CHANGELOG.md](CHANGELOG.md)。发布：[docs/release/PUBLISHING.md](docs/release/PUBLISHING.md)。
 
-> ⚠️ 与上游的行为差异：控制台/DSH 设置/QQ 的模式变更都会通知 owner；未经管理通道授权的 closed-agent 不能建会话
->（从上游升级时若停在 closed-agent，会回落到 reserved2 并告警）；审批改为编号制。详见 CHANGELOG「变更」。
-> 下文上游文档中 `git clone https://github.com/Derpyu520/qq-bridge.git` 的地方，请换成本仓库地址（https://github.com/h-D-ACE/dsh-qq）或使用 Release ZIP；
+> ⚠️ **个人自用轻量版**：桥接只保留 `reserved2` 二代仿真一条运行链路；没有 chat / closed-agent / 一代仿真，没有模式切换、审批、TOTP 与 L1~L3。
+> 下文上游文档里 `git clone https://github.com/Derpyu520/qq-bridge.git` 的地方，请换成本仓库地址（https://github.com/SaiCateDoan/qq-bridge-lite）或使用 Release ZIP；
 > 上游文档按「桥接直连 SnowLuma、DSH 固定端口 3080」写，那条路仍然可用，但推荐用上面的控制中心 + 接口平台。
+> 安装 preset 时只会装 `qq-chat-v2` 一条；部署 agent 若按旧文档去找 `qq-chat` / `qq-agent-*`，以本节为准。
 
 ---
 
-> ⚠️ **当前版本 `v0.2.0`，适配 DSH 0.2.0-rc.2**（在该版本上逐项实测：`npm run verify:adaptation`）。
+> ⚠️ **当前版本 `v1.0.3`，适配 DSH 0.2.x**（离线自检：`npm run test:audit`）。
 > 鉴权用 `~/.dsh` 里持久化的浏览器会话签名密钥**离线铸造 Cookie** —— DSH 0.1.7 起进程启动 token
 > 只存在于内存、不再落盘，旧版「从 guard 日志里读 token」的方式已失效。agent preset 是 DSH 0.1.7 起的
 > `@deepseek-ai/dsh-agent-preset` Cordis 行（`~/.dsh/.agent-presets/` 目录机制已废）。协议代次
@@ -111,7 +130,7 @@ NapCat 要在它的 WebUI 里开启 WebSocket 服务端 `127.0.0.1:3001`）。�
 ```
 QQ 消息 ──► SnowLuma（OneBot v11 WS）──► 本桥接进程 ──► DSH Web API (127.0.0.1:3080/api)
                                                 ▲                      │
-                                                └── agent 回复/提问/审批 ┘
+                                                └── agent 回复/提问 ┘
 ```
 
 ## 项目展示
@@ -135,25 +154,17 @@ QQ 消息 ──► SnowLuma（OneBot v11 WS）──► 本桥接进程 ──�
     ⚠️ 它会把**搜索关键词发给 Bing**、并按模型决定抓取公网 URL；**黑话学习默认开启**，会拿群聊里提取的词条去搜。
     数据出机清单见 [LICENSE](LICENSE) 的「数据出机清单」，不需要就关掉黑话自动研究（`slang.autoResearch`）。
 - **会话模型**：每个 QQ 会话（私聊/群）对应一个独立的 DSH 会话，统一归组到「QQ 聊天」工作区（不再散落未分组）；映射持久化在 `state/sessions.json`
-- **性格定制**：QQ 会话默认使用 `qq-chat` agent preset，`reserved2` 使用 `qq-chat-v2`。DSH 0.1.7 起 preset 不再是 `~/.dsh/.agent-presets/<名>/` 目录，而是 `plugins/qq-agent-presets/` bundle 生成并插入 profile 的一条 `@deepseek-ai/dsh-agent-preset` 行（重启 DSH 后生效）；人格与默认 DSH 一致（coding agent），仅附加 QQ 场景规则；**角色扮演**是可选机制——由控制台或管理端设置 `state/current-role.json` 注入（群友无法更改）
-- **本地控制台**：桥接自带 Web 控制台 `http://127.0.0.1:3100`——左侧按操作任务分为「运行总览 / 会话与审批 / 人格与角色 / 二代仿真 / 一代仿真 / 黑话词库 / 令牌与花费 / 访问与安全 / 调试与运维 / 工具参考」十个页面，右上角搜索框可跨页定位任意功能项；支持**浅色 / 深色双主题**（顶栏一键切换，未选择时跟随系统）；切换运行模式（chat / closed-agent / reserved / reserved2）、设置角色、静默开关、查看活动日志、修改管理员/控制台令牌，全部即时生效；访问需要令牌（`config.json` 的 `consoleToken`，未配置时自动生成并打印在启动日志；控制台内可手动修改或重新生成）
+- **QQ 提示词**：DSH 0.1.7 起 preset 是 `plugins/qq-agent-presets/` bundle 生成并插入 profile 的一条 `@deepseek-ai/dsh-agent-preset` 行（重启 DSH 后生效）。桥接只维护 `qq-chat-v2` 一套提示词，内容在 `dsh/agent-presets/qq-chat-v2/agent.cordis.yml`；**不塑造角色**——AI 是谁由 harness 全局提示词（`dsh-context` 的 promptSuffix）提供，GUI 与 QQ 是同一个自己
+- **本地控制台**：桥接自带 Web 控制台 `http://127.0.0.1:3100`——左侧按操作任务分为「运行总览 / 会话 / QQ 提示词 / 二代仿真 / 黑话词库 / 令牌与花费 / 访问与安全 / 调试与运维 / 工具参考」九个页面，右上角搜索框可跨页定位任意功能项；支持**浅色 / 深色双主题**（顶栏一键切换，未选择时跟随系统）；查看活动日志、修改管理员/控制台令牌即时生效；访问需要令牌（`config.json` 的 `consoleToken`，未配置时自动生成并打印在启动日志；控制台内可手动修改或重新生成）
   - **令牌与花费看板**：实时显示 AI 的 token 消耗与折算金额（元），可下钻到**每个群 / 每个好友 / 每一轮对话**（轮次、步数、缓存命中/未命中输入、输出、命中率、花费、峰谷时段），并有**按时间的消耗走势图**（24 小时 / 3 天 / 7 天 / 30 天，柱子按高峰/空闲着色，一眼看出什么时候烧得凶、哪几个小时是 2 倍价）。累计总量取自 DSH 的 `tokenUsage` 投影（精确，含桥接启动前的历史），逐轮明细由 `assistant/message` 的 `usage` 折叠而来；金额按 DeepSeek 官方价目表折算并区分**高峰 / 空闲时段**（高峰单价为空闲的 2 倍，已内置中国法定节假日）。详见 [docs/guides/TOKEN_USAGE_CONSOLE.md](docs/guides/TOKEN_USAGE_CONSOLE.md)
-  - **人格（角色扮演）管理**：列表点选即可载入查看/编辑提示词，支持新建、保存修改、改名（自动重命名文件）、另存为副本、删除；超过注入上限或含一代专用指令会实时提示
-  - **两层提示词可分别查看与修改**：「仿真提示词」（预设内置，管行为与协议，保存后同步到 DSH，需重启生效）与「人格提示词」（`roles/*.md`，管人设与语气，保存即生效）；仿真层保存前做安全不变量校验与自动备份，可一键还原
+  - **QQ 提示词管理**：一个页面编辑整套提示词（工具协议、群聊分寸、分条格式），保存会写入源文件并重新生成 DSH 的 preset patch，重启 DSH 后生效；保存前做安全/工具不变量校验与自动备份，支持「还原上次备份」与「恢复默认预设」
   - **DSH 模型与思考强度**：提供方 / 模型 / 思考强度三个下拉联动，选项来自 DSH 的模型目录（能用上 DSH 里配好的其它提供方），保存后下一条消息生效；默认仍是 `deepseek-flash` + `max`。换到第三方提供方会提示隐私，不能看图的模型自动把图片改成文字，价格未覆盖的模型标「估算」；控制台会明示该设置同时写入 DSH 全局默认（`~/.dsh/settings.yaml`）
-- **运行模式**：
-  - `chat`：白名单群 + 白名单私聊 → qq-chat 安全聊天
-  - `closed-agent`：仅私聊 owner（config.json 的 ownerQQ，可在控制台设置）→ 完整工具（默认用 DSH 自己声明的默认 preset，即 `standard`；可在控制台「closed-agent preset」下拉改为任意 DSH preset），可在 QQ 上操控 DSH
-  - `reserved`（一代仿真）：仿真群友，观望/活跃/试探/退场状态机，选择性参与、按空格分句发送、主动收尾
-  - `reserved2`（二代仿真，运行 `setup-dsh.mjs` 后 DSH 默认）：文本不自动转发，AI 通过 `qq_get_unread_messages` / `qq_send_message` 等工具自主看消息、发言、等待、设置唤醒/潜水；DSH 端使用 `qq-chat-v2` preset
+- **运行链路**：只保留 `reserved2` 二代仿真——文本不自动转发，AI 通过 `qq_get_unread_messages` / `qq_send_message` 等工具自主看消息、发言、等待、设置唤醒/潜水；DSH 端固定使用 `qq-chat-v2` preset
 - **交互增强**：
   - agent 通过 `ask_user_question` 提问时，问题会转发到 QQ，回复即自动应答
-  - agent 请求工具审批时，转发到 QQ，回复「通过」/「拒绝」即可决策
   - 支持 DSH 斜杠命令（如 `/model`）与 `/reset`（重置会话上下文）
   - 群聊引用/回复会解析成「被引用人 + 原文」注入 DSH（如 `[引用 Derp：El Psy Kongroo是啥]机关的走狗`），让 AI 判断这句话是对谁说的，不会把群友之间引用第三方的对话误当成指向自己；引用机器人自己时会被视为必回
-  - MCP 发送工具支持可选 `replyToMessageId`，并新增专用 `qq_reply` 工具：AI 可以先用 `qq_get_group_history` 拿到真实消息 id，再引用/回复某条消息（是否允许 AI 主动使用由人格/策略决定；桥接会检测发送类工具调用并自动跳过该回合的重复自动转发）
-  - 一代仿真模式（`reserved`）下，AI 可以只输出 `[SILENT]` 表示“潜水/不接话”，桥接会静默不发送
-  - 一代仿真模式（`reserved`）按空格分句：AI 用空格表示拆成多条消息；中英文/数字之间的空格也会被当成分条信号，不想分条就不要加空格（`reserved2` 不适用，分条请用 `qq_send_message` 数组）
+  - MCP 发送工具支持可选 `replyToMessageId`，并新增专用 `qq_reply` 工具：AI 可以先用 `qq_get_group_history` 拿到真实消息 id，再引用/回复某条消息（桥接会检测发送类工具调用并自动跳过该回合的重复自动转发）
 
 ## 前置条件
 
@@ -205,7 +216,7 @@ npm install        # 安装依赖（postinstall 会自动修补 @snowluma/sdk �
 node scripts/setup-dsh.mjs
 ```
 
-> 全新环境下脚本会把 DSH 默认模式设为 **`reserved2`（二代仿真）**，并创建本地 `state/mode.json` 兜底；这样 AI 使用 `qq_send_message` 等工具收发消息时，DSH 会自动使用 `qq-chat-v2` 模式。如果本机已存在旧的 `state/mode.json` 或 DSH 设置值，脚本会保留不覆盖。之后可在**桥接控制台**（默认 `http://127.0.0.1:3100`）顶部按钮切换模式，控制台会同时写入 DSH 设置与本地兜底文件。
+> 脚本只安装 `qq-chat-v2` 一条 preset，并把 `qq-agent-presets` bundle 注册进 profile；**重启 DSH 后生效**。本轻量版没有模式切换，也不再写 `state/mode.json`——桥接固定以 `reserved2` 运行。UI 上只有一个「QQ 提示词」页，可编辑整套提示词或恢复默认。
 
 详细步骤见 **[docs/guides/DSH_SETUP.md](docs/guides/DSH_SETUP.md)**。
 
@@ -270,7 +281,7 @@ npm start          # 或双击 start.bat（守护模式：崩溃自动重启，�
 - **用 start.bat 启动**（守护模式），窗口别关——桥接崩溃会在 5 秒后自动拉起
 - 桥接异常/消息无反应时：双击 `restart.bat`（自动杀旧实例 → 清理锁 → 重新启动守护）
 - **重启 DSH 通常不需要动桥接**：每 5 秒探活，DSH 不可用期间收到的 QQ 消息在桥接进程内排队（最多 50 条/会话，满后丢最旧项），恢复后尝试补投。桥接进程退出会丢失内存队列；断线期间已经结束的回复暂不保证补发。
-- 修改 `config.json` / `roles/` / `state/current-role.json` 后重启桥接生效；修改 `dsh/agent-presets/`（改完要跑 `node scripts/build-agent-preset-patches.mjs` 重新生成 bundle patch）或 MCP 配置后重启 DSH 生效
+- 修改 `config.json` 后重启桥接生效；修改 `dsh/agent-presets/qq-chat-v2/agent.cordis.yml`（控制台「QQ 提示词」保存会自动重生成 bundle patch）或 MCP 配置后重启 DSH 生效
 
 日志示例：
 
@@ -295,7 +306,6 @@ reserved2 的 token 开销优化、消息水位协议、升级及回退说明（
 
 ```bash
 npm run test:tokens        # 单元测试
-npm run test:console-ui    # 离线浏览器回归（含看板渲染与逐轮下钻）
 ```
 
 本轮审查与修复明细为本地审计文档，未随仓库发布。升级后会为没有权限元数据的历史映射重建一次 QQ 会话；模式或 preset 变化也会自动重建，避免保留旧权限。旧历史仍在 DSH 中。
@@ -317,7 +327,7 @@ qq-bridge/
   docs/
     README.md           # 文档索引（每篇一句话 + 是否仍然有效）
     FOLDER_MAP.md       # 目录结构与 scripts/ 命名约定
-    guides/             # 面向使用者/运维：PROJECT_GUIDE / DSH_SETUP / VOICE / TOKEN_USAGE_CONSOLE / CONSOLE-UI-TESTING
+    guides/             # 面向使用者/运维：PROJECT_GUIDE / DSH_SETUP / VOICE / TOKEN_USAGE_CONSOLE
     design/             # 设计与规划：GEN2_SIMULATION_PLAN / SOCIAL_MODE_PLAN / DSH_QQ_TOOLS_PLAN / 真人语感策略
     research/           # 调研：SnowLuma功能调研 / QQ消息免打扰 / 表情包能力 / 本地模型选型
     audits/             # 审查与优化报告（体检、控制台、token）

@@ -97,9 +97,9 @@ test('接线：开关默认关闭、MCP 仅显式 true 才注册、端点不复�
   assert.ok(bridge.includes('enabled: cfg.socialV2?.tools?.ownerRelay === true'), '端点要求显式 true');
   assert.ok(mcp.includes("if (cfg.socialV2?.tools?.ownerRelay === true) {"), 'MCP 只在显式 true 时注册');
   // 端点的令牌校验针对发起方 key（管理员私聊），并且唤醒的是目标群自己的会话，而不是直接发送。
-  const seg = bridge.slice(bridge.indexOf("url.pathname === '/api/socialV2/owner-relay'"), bridge.indexOf('// ── v0.3.0 控制台（管理端专用'));
+  const seg = bridge.slice(bridge.indexOf("url.pathname === '/api/socialV2/owner-relay'"), bridge.indexOf('// 管理员私聊的跨群能力'));
   assert.ok(seg.includes('agentTokenOk(key, agentToken)'), '令牌只和发起方会话比对');
   assert.ok(seg.includes("scheduleWakeV2(check.targetKey, 'ownerRelay')"), '交给目标群会话自己处理');
   assert.ok(!/sendGroupMessage|sendToQQ\(/.test(seg), '端点本身不直接往群里发消息');
-  assert.ok(seg.includes('ext.audit.append'), '记审计');
+  assert.ok(seg.includes('auditLog('), '记审计');
 });

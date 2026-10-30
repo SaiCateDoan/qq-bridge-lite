@@ -30,10 +30,10 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const PRESETS_DIR = path.join(ROOT, 'dsh', 'agent-presets');
 
 /** 仿真模式使用的 preset（不允许有任何本地执行能力）。 */
-const SIMULATION_PRESETS = ['qq-chat', 'qq-chat-v2'];
+const SIMULATION_PRESETS = ['qq-chat-v2'];
 
-/** 封闭 agent 的 preset：按设计**允许**完整本地工具面。 */
-const CLOSED_AGENT_PRESETS = ['qsh-closed'];
+/** 封闭 agent 的 preset：已随模式链路一起移除。 */
+const CLOSED_AGENT_PRESETS = [];
 
 /**
  * 本地执行能力清单。
@@ -210,8 +210,9 @@ test('守卫名单里的每个名字都是 DSH 真实注册的工具（防拼错
   // pwsh_persistent / bash_persistent / cordis / goal_write / goal_read 五个假名
   // 让整批限制悄悄少生效，而套件当时全绿。
   const dshNames = collectDshToolNames();
-  if (dshNames === null) {
-    console.log('  ⏭  跳过：未找到 DSH 工具包（设 DSH_TOOL_PACKAGES 指向 @deepseek-ai 目录即可启用）');
+  // 桌面版 DSH 把工具包打进 app.asar，磁盘上只解析到少数几个包；此时无法对账，按跳过处理。
+  if (dshNames === null || dshNames.size < 10) {
+    console.log('  ⏭  跳过：未找到完整的 DSH 工具包（设 DSH_TOOL_PACKAGES 指向解包后的 @deepseek-ai 目录即可启用）');
     return;
   }
   for (const id of SIMULATION_PRESETS) {

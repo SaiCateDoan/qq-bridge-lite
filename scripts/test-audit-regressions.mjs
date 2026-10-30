@@ -191,45 +191,6 @@ await test('R5 未跟踪的 turn/end 不留下 collector（否则会话永久繁
 });
 
 // ── R6. DSH 设置里的空 ownerQQ 不覆盖 config.json ───────────────────────────
-await test('R6 DSH 设置 ownerQQ 留空时保留 config.json 的值', async () => {
-  const h = await bridgeHarness();
-  try {
-    h.api.settings.describe = async () => ({
-      result: { ok: true, value: { namespaces: [{ ns: 'qq-mode', value: { mode: 'reserved2', ownerQQ: '' } }] } }
-    });
-    await h.refreshMode();
-    assert.equal(h.cfg.ownerQQ, 123, '空串表示「不覆盖」，不能把 ownerQQ 抹成 null');
-
-    h.api.settings.describe = async () => ({
-      result: { ok: true, value: { namespaces: [{ ns: 'qq-mode', value: { mode: 'reserved2', ownerQQ: 456 } }] } }
-    });
-    await h.refreshMode();
-    assert.equal(h.cfg.ownerQQ, 456, '非空值仍然要能覆盖');
-  } finally { await h.close(); }
-});
-
-// ── R7. 预设名先校验再拼路径 ────────────────────────────────────────────────
-await test('R7 未知 preset 名直接被拒（含路径穿越形态）', async () => {
-  const h = await bridgeHarness();
-  try {
-    h.setPresets([]); // 模拟 DSH 未连接：清单为空
-    // 给临时仓库放一份真实的预设源文件，验证「已知 preset 不会被误伤」
-    const presetFile = path.join(h.temp, 'dsh', 'agent-presets', 'qq-chat-v2', 'agent.cordis.yml');
-    fs.mkdirSync(path.dirname(presetFile), { recursive: true });
-    fs.writeFileSync(presetFile, '- id: persona\n  config:\n    prefix: |-\n      测试用仿真提示词。\n');
-    await withServer(h, async (port) => {
-      for (const bad of ['../../etc', '..\\..\\..\\x', 'qq-chat/../../x', 'standard']) {
-        const res = await call(port, '/api/preset/sim-prompt?preset=' + encodeURIComponent(bad));
-        assert.equal(res.status, 400, `preset=${bad} 必须被拒，实际 ${res.status}`);
-      }
-      const ok = await call(port, '/api/preset/sim-prompt?preset=qq-chat-v2');
-      assert.equal(ok.status, 200, `已知 preset 仍应可用：${ok.body}`);
-      assert.equal(ok.json?.content, '测试用仿真提示词。');
-    });
-  } finally { await h.close(); }
-});
-
-// ── R8. wake-config 只接受已知 triggers 字段 ────────────────────────────────
 await test('R8 wake-config 丢弃未知 triggers 键（不落盘、不回传模型）', async () => {
   const h = await bridgeHarness();
   try {

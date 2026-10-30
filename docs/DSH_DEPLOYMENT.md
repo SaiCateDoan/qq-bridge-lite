@@ -1,5 +1,9 @@
 # DSH_DEPLOYMENT.md —— 给部署 agent 的完整部署说明（qq-bridge-enhanced）
 
+> ⚠️ **2026-10-30 重构后，桥接只保留 `reserved2` 二代仿真一条链路。** 本文中涉及
+> `chat` / `closed-agent` / 一代仿真 / L1~L3 权限分级 / TOTP / 审批 的章节已不再适用，仅作历史参考；
+> 安装 preset 时只需 `qq-chat-v2`。
+>
 > **读者**：之后负责部署本项目的 DSH agent（或任何没有参与开发的人）。
 > **约定**：每一步都写明「在哪个目录执行 / 前置条件 / 预期结果」。命令分 **Windows（PowerShell）** 与 **macOS（终端 zsh）** 两套，
 > 只有一套的地方表示两边相同。**不要猜测配置字段**——所有字段都在本文第 7 节与
@@ -30,9 +34,9 @@
 | 日常启动（无窗口） | Windows：双击 `control-center-hidden.vbs`；macOS：双击本机生成的「QQ Bridge 控制中心.app」（第 10 节）；Linux：`npm run linux-service` 生成 systemd 用户服务（后台常驻、登录自动启动） |
 | 端口 | 控制中心 `127.0.0.1:3099`；桥接控制台 `3100`；接口平台 `3120`；DSH 命令行版 `3080` / 桌面版 0.2.0 `19387`、0.2.1 随机（自动识别）；OneBot WS 默认 `3001`；SnowLuma WebUI `5099`；NapCat WebUI `6099` |
 
-新功能一句话：按 QQ 号跨群认人、分层人物记忆、入群感知、owner 私聊管理通道（确认码 + TOTP 的模式/权限切换、编号审批、自动回落）、
+新功能一句话：按 QQ 号跨群认人、分层人物记忆、入群感知、
 把桥接 / 接口平台 / QQ 后端合到一个本地网页里的**控制中心**，以及 macOS + NapCat 支持。
-完整说明见 [guides/CONTINUITY.md](guides/CONTINUITY.md)、[guides/ADMIN_CHANNEL.md](guides/ADMIN_CHANNEL.md)、[guides/CONTROL_CENTER.md](guides/CONTROL_CENTER.md)。
+完整说明见 [guides/CONTINUITY.md](guides/CONTINUITY.md)、[guides/CONTROL_CENTER.md](guides/CONTROL_CENTER.md)。
 
 ## 1. 系统架构与依赖
 
@@ -211,8 +215,8 @@ unzip qq-bridge-enhanced-v<版本>.zip && cd qq-bridge-enhanced-v<版本>
 **方式 B：git**
 
 ```
-git clone https://github.com/h-D-ACE/dsh-qq.git qq-bridge-enhanced
-cd qq-bridge-enhanced
+git clone https://github.com/SaiCateDoan/qq-bridge-lite.git qq-bridge-lite
+cd qq-bridge-lite
 ```
 
 预期：`<BRIDGE>` 下能看到 `package.json`、`src/bridge.js`、`config.example.json`、`interface-platform/`、
@@ -325,13 +329,10 @@ node scripts/setup-dsh.mjs
 **验证（需要 DSH 正在运行）**：
 
 ```
-npm run probe:permission
+npm run test:audit
 ```
 
-预期最后一行：`✅ 权限预设与 /permission 行为符合 v0.3.0 的假设`。它会建一个临时会话测试 `/permission`，
-确认 `read-only` / `workspace-write` / `qq-full-ask` 与三个运维 preset 都已加载，并确认通过普通消息发送的
-`/permission` 文本**不会**改变权限。出现 ❌ 时：**不要启用 closed-agent**，把输出发给用户（群友模式仍可正常使用）。
-DSH 地址自动识别；DSH 跑在别的机器/固定端口时，先设置环境变量 `DSH_BASE_URL=http://127.0.0.1:<端口>` 再运行。
+预期全部通过（离线）。preset 是否挂上，用 `npm run probe:protocol` 看 `agentPresets/list` 里是否有 `qq-chat-v2`。
 
 ## 9. （可选，L3 需要）配置 TOTP 二次认证
 

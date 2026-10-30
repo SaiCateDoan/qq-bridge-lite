@@ -10,7 +10,6 @@ import {
   PRESET_REQUIRED_MARKERS,
   extractPresetPrefix,
   locatePresetPromptBlock,
-  presetBlockingSubstrings,
   presetPromptBlockers,
   presetPromptWarnings,
   renderPresetPromptYaml,
@@ -20,26 +19,13 @@ const PRESET_PATH = new URL('../dsh/agent-presets/qq-chat-v2/agent.cordis.yml', 
 const source = fs.readFileSync(PRESET_PATH, 'utf8');
 const originalPrefix = extractPresetPrefix(source);
 
-// 回归：内置预设必须满足**它自己那一代**的硬性不变量。
-//
-// 背景：保存/还原的校验曾经对两代预设用同一份清单（那份清单是照二代写的），
-// 结果一代预设（qq-chat）在控制台里 100% 存不进去、也还原不了 ——
-// 报错还说它「缺少安全不变量」，而它从来就没打算有那些工具面表述。
-// 这条测试同时钉住两件事：① 每代预设都能通过自己的清单；② 清单本身没写错字。
-test('每代内置预设都满足自己那一代的安全不变量', () => {
-  for (const [name, gen] of [['qq-chat', 'v1'], ['qq-chat-v2', 'v2']]) {
-    const text = fs.readFileSync(new URL(`../dsh/agent-presets/${name}/agent.cordis.yml`, import.meta.url), 'utf8');
-    const prefix = extractPresetPrefix(text);
-    assert.equal(typeof prefix, 'string', `${name} 应能抽出 persona.prefix`);
-    const blockers = presetPromptBlockers(prefix, gen);
-    assert.deepEqual(blockers, [], `${name}（${gen}）不应有阻断项，实际：${blockers.join('；')}`);
-  }
-});
-
-test('一代与二代的硬性不变量清单确实不同（防止又合并成一份）', () => {
-  assert.notDeepEqual(presetBlockingSubstrings('v1'), presetBlockingSubstrings('v2'));
-  // 二代的工具面不变量不应该出现在一代清单里
-  assert.ok(!presetBlockingSubstrings('v1').includes('你没有本地工具'));
+// 回归：内置预设必须满足自己的硬性不变量。
+test('内置预设满足当前的安全/工具不变量', () => {
+  const text = fs.readFileSync(new URL('../dsh/agent-presets/qq-chat-v2/agent.cordis.yml', import.meta.url), 'utf8');
+  const prefix = extractPresetPrefix(text);
+  assert.equal(typeof prefix, 'string', 'qq-chat-v2 应能抽出 persona.prefix');
+  const blockers = presetPromptBlockers(prefix);
+  assert.deepEqual(blockers, [], `qq-chat-v2 不应有阻断项，实际：${blockers.join('；')}`);
 });
 
 test('真实预设能定位到 persona 的 prefix 块', () => {
@@ -119,10 +105,10 @@ test('删掉安全不变量或正文过短时阻断保存（保护 AI 效果与�
   assert.throws(() => renderPresetPromptYaml(source, '太短了'), /过短/);
   // 逐条移除安全不变量，必须被拦住
   for (const needle of PRESET_BLOCKING_SUBSTRINGS) {
-    const tampered = originalPrefix.replace(needle, '（已删除）');
+    const tampered = originalPrefix.split(needle).join('（已删除）');
     assert.throws(
       () => renderPresetPromptYaml(source, tampered),
-      new RegExp(`缺少安全不变量「${needle}」`),
+      new RegExp(`缺少安全/工具不变量「${needle}」`),
       `删除「${needle}」后仍被允许保存`,
     );
   }

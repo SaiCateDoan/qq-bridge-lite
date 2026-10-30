@@ -25,34 +25,9 @@
 
 > `config.example.json` 里的 `groups` 用的是**示例群号 10001 / 20002**，部署时请删除或改成真实群号。
 
-## `admin` —— owner 私聊管理通道
+## `admin`（已移除）
 
-| 字段 | 默认 | 说明 |
-| --- | --- | --- |
-| `enabled` | `true` | 关闭后 owner 私聊不再处理管理命令；模式/权限类斜杠命令仍被拦截，不会透传 |
-| `naturalLanguage` | `true` | 是否识别「切换到 agent 模式」等固定句式（正则，不经过模型） |
-| `safeMode` | `"reserved2"` | 降级、紧急关闭、自动回落的目标（`chat` / `reserved` / `reserved2`） |
-| `defaultAgentLevel` | `"L1"` | `/mode agent` 不带级别时的默认级别。控制台未指定时用 L2 |
-| `confirmCodeDigits` | `4` | 确认码位数（4~8） |
-| `requestTtlMs` | `120000` | 确认码有效期 |
-| `maxConfirmAttempts` | `3` | 每个申请最多尝试次数 |
-| `maxPendingRequests` | `3` | 同时待确认的申请上限 |
-| `idleTimeoutMs` | `1800000` | 高权限闲置自动回落；`0` = 关闭（不建议） |
-| `maxElevatedMs` | `{ "L1": 14400000, "L2": 7200000, "L3": 3600000 }` | 各级别最长持续时间 |
-| `hibernateChatSessions` | `true` | 进 agent 时聊天会话休眠、回落后原样复用（v1.0.3）；`false` = 切换即归档（旧行为） |
-| `dormantMaxMs` | `86400000` | 休眠会话最长保留多久，超过归档 |
-| `handover` | `true` | 记录 owner 私聊往来，并在 owner 会话因切换换新 / 恢复时注入交接（只含 owner 私聊、已脱敏）；`false` = 不记录不注入 |
-| `totpMaxFailures` | `5` | TOTP 连续失败多少次锁定 |
-| `totpLockMs` | `900000` | 锁定时长 |
-| `allowL3` | `true` | `false` = 任何入口都不能开 L3。未配置 TOTP 时 L3 本来就不可用 |
-| `externalEscalation` | `"revert"` | 发现外部把模式改成 closed-agent 时：`revert` 回退并告警；`alert` 只告警 |
-| `showPrivateNotes` | `false` | 管理通道 `/whois` 是否显示私聊来源记忆的原文（默认只显示条数） |
-| `pinChatReadOnly` | `true` | 群友会话建好后顺手钉 `read-only` 权限预设（纵深防御，失败不影响聊天） |
-| `approvalArgsMaxChars` | `600` | 审批消息里参数展示的字数上限 |
-| `consoleEscalationCooldownMs` | `600000` | 高权限回落后多久内控制台不能提权（高权限期间控制台一律不能提权）；QQ 管理通道的申请+确认不受影响 |
-| `allowCustomAgentPreset` | `false` | `true` 时 L2/L3 改用控制台「封闭 Agent 使用的 DSH 预设」里选的 preset —— **那样没有桥接的审批闸门**，不建议 |
-
-TOTP 秘密**不在** `config.json` 里：用 `npm run admin:totp-setup` 写入 `state/admin/totp.json`，或设置环境变量 `QQ_BRIDGE_TOTP_SECRET`。
+桥接只保留 `reserved2` 二代仿真一条运行链路，模式切换 / 权限分级（L1~L3）/ 审批 / TOTP 管理通道已整体删除；`config.json` 里残留的 `admin`、`social`、`role` 段会被忽略，可以手工删掉。
 
 ## `crossGroup` —— 跨群受控查询
 
@@ -153,7 +128,4 @@ AI **收藏**群友的表情、**发送**收藏表情时，桥接会先自己下
 | 文件 | 内容 |
 | --- | --- |
 | `state/social/people.json`（+ `backups/`） | 人物库 |
-| `state/admin/control.json`（+ `backups/`） | 当前模式/级别、申请记录、TOTP 防重放计数、审批编号 |
-| `state/admin/audit.jsonl`（滚动 `.1`~`.5`） | 管理审计（哈希链） |
-| `state/admin/totp.json` | TOTP 秘密（如果用文件方式） |
-| `state/mode.json` | 原版的模式兜底文件，v0.3.0 额外写入 `level` |
+| `state/chat-mode.json`（可选） | 旧的静默/活跃开关；只保留兼容读取 |

@@ -17,7 +17,7 @@ const tests = [
   'test-dsh-inbox-projection.mjs',
   'test-md-to-plain.mjs', 'test-slang-learn.mjs', 'test-mux-reconnect.mjs',
   'test-token-economy.mjs', 'test-qq-model-view.mjs', 'test-qq-preset-contract.mjs',
-  'test-reply-wait.mjs', 'test-preset-prompt.mjs', 'test-role-card.mjs',
+  'test-reply-wait.mjs', 'test-preset-prompt.mjs',
   // 体检修复回归：无令牌智能体调用面、send-burst 失败回滚、唤醒限频重试、
   // 定时器类暂存唤醒补发、collector 生命周期、ownerQQ 覆盖语义、预设名校验、
   // wake triggers 白名单、memory-update 边界、wait 租约归一化、md/黑话/表情/账本；
@@ -60,7 +60,6 @@ const tests = [
   // qq-mode-console 的 settings 契约：0.2.0 删除了 ctx.settings.register()，
   // 命名空间改为由 loader entry id + 导出的 Config 推导。断言三点前提都在，
   // 并且那条已删除的 API 不会被照旧注释加回来。
-  'test-qq-mode-plugin.mjs',
   // SnowLuma 上游健康（被误诊成「qq-bridge 注入失败」的那个失败形态）：
   //   · good 必须取自心跳 status.good / get_status —— 取自 get_login_info 会**静默失效**
   //     （SDK 不校验 data 载荷，good 会永远停在 null，整条权威信号变成死分支）；
@@ -70,20 +69,12 @@ const tests = [
   // ── v0.3.0 新功能（全部离线，假数据）────────────────────────────────────────
   // 人际连续性：QQ 号认人、改名、入群分类/去重、首次部署对账、可见范围过滤、跨群协作、存储可靠性。
   'test-continuity.mjs',
-  // 管理通道：TOTP（RFC 6238 向量）、审计哈希链、确认码状态机、并发申请、自动回落、审批编号、命令解析。
-  'test-admin-control.mjs',
-  // 接线：真实 bridge.js + 假 DSH/OneBot —— 确认消息不进模型、非 owner/提示注入无法提权、
-  // 权限预设钉住与 fail-closed、审批绑定参数、入群唤醒、AI 工具的会话边界。
-  'test-integration-v030.mjs',
-  // L1 只读 agent preset 的工具白名单守卫（不依赖 Windows 沙箱）。
-  'test-agent-readonly-guard.mjs',
-  // preset 源与 bundle patch 不漂移（v0.3.0 起多了 qq-agent-readonly，一并钉住）。
+  // preset 源与 bundle patch 不漂移（只保留 qq-chat-v2）。
   'test-agent-preset-patches.mjs',
   // v0.4.0 控制中心：目录识别、数据迁移、鉴权、子进程管理、固定命令集与 L6（只由用户点击启停 SnowLuma）。
   'test-control-center.mjs',
   // v0.4.1 部署反馈：握手只发 error 的自愈 + 连接看门狗；DSH 回合错误可定位且不外泄；DSH 端口自动识别。
   'test-snowluma-reconnect.mjs',
-  'test-agent-errors.mjs',
   'test-dsh-endpoint.mjs',
   // v0.4.2 管理员私聊托付群会话（方案 C）：只有 owner 私聊能托付白名单群，交给群会话自己发言，会话隔离不变。
   'test-owner-relay.mjs',
@@ -103,14 +94,12 @@ const tests = [
   'test-mac-app.mjs',
   // DSH 探活：连续 2 次失败才判定不可用（偶发一次只在恢复时记一笔），失败原因分类（超时 / 连接被拒 / 其他）。
   'test-dsh-health.mjs',
-  // Linux 支持（增量，Windows / macOS 行为不变）：SnowLuma 2.x 发行包识别与启动、Node 要求、按平台的更新建议、Linux「浏览…」、NapCat 在 Linux、systemd 用户服务。
   'test-linux-support.mjs',
   // Windows 实机部署反馈的问题：Release ZIP 中文文件名 UTF-8 标志、黑话研究日志计数、会话重置清等待租约、Linux 服务文件 POSIX 路径、禁止 URL.pathname 当路径。
   'test-deploy-fixes.mjs',
   'test-slang-guess.mjs',
   'test-dsh-model.mjs',
   'test-quote-forward.mjs',
-  'test-mode-handover.mjs',
   // AI 收藏表情的后端适配：SnowLuma 照旧 base64://；NapCat 只收本地路径时改用桥接自建的受控临时文件（用完即删）。
   'test-sticker-collect.mjs',
 ];

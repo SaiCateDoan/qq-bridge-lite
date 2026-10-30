@@ -24,6 +24,7 @@ function fixture(name, patch = '') {
   fs.copyFileSync(path.join(root, 'scripts/setup-dsh.mjs'), path.join(repo, 'scripts/setup-dsh.mjs'));
   // setup-dsh.mjs 直接从仓库源生成 bundle patch，生成器必须一起进夹具。
   fs.copyFileSync(path.join(root, 'scripts/build-agent-preset-patches.mjs'), path.join(repo, 'scripts/build-agent-preset-patches.mjs'));
+  fs.cpSync(path.join(root, 'src'), path.join(repo, 'src'), { recursive: true });
   fs.cpSync(path.join(root, 'dsh'), path.join(repo, 'dsh'), { recursive: true });
   fs.cpSync(path.join(root, 'plugins'), path.join(repo, 'plugins'), { recursive: true });
   fs.cpSync(parserRoot, path.join(repo, 'node_modules/js-yaml'), { recursive: true });
@@ -65,7 +66,7 @@ try {
     }
     const pkg = JSON.parse(fs.readFileSync(path.join(f.home, 'profiles/web/package.json')));
     assert.equal(pkg.dependencies.existing, '1.0.0');
-    assert.deepEqual(pkg.dsh.profile.bundles, ['existing', 'qq-mode-console', 'qq-agent-presets']);
+    assert.deepEqual(pkg.dsh.profile.bundles, ['existing', 'qq-agent-presets']);
   });
 
   test('legacy root [] is repaired without altering literal strings', () => {
@@ -101,10 +102,10 @@ try {
     assert.equal(result.status, 0, result.stderr);
     assert.equal(fs.readFileSync(path.join(f.repo, 'state/mode.json'), 'utf8'), mode);
     const blocker = fixture('plugin-conflict', '[]\n');
-    fs.mkdirSync(path.join(blocker.home, 'plugins/qq-mode-console'), { recursive: true });
-    fs.writeFileSync(path.join(blocker.home, 'plugins/qq-mode-console/keep.txt'), 'keep');
+    fs.mkdirSync(path.join(blocker.home, 'plugins/qq-agent-presets'), { recursive: true });
+    fs.writeFileSync(path.join(blocker.home, 'plugins/qq-agent-presets/keep.txt'), 'keep');
     assert.notEqual(blocker.run().status, 0);
-    assert.equal(fs.readFileSync(path.join(blocker.home, 'plugins/qq-mode-console/keep.txt'), 'utf8'), 'keep');
+    assert.equal(fs.readFileSync(path.join(blocker.home, 'plugins/qq-agent-presets/keep.txt'), 'utf8'), 'keep');
   });
 
   if (process.platform === 'win32') test('Windows runs the npm .cmd shim with literal profile arguments', () => {

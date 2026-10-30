@@ -32,7 +32,7 @@ test('local/admin tool restrictions and existing compaction budgets stay intact'
   assert.deepEqual(compaction.config.find((row) => row.id === 'tool-result-pruner').config, {
     thresholdChars: 50000, headChars: 45000, tailChars: 2000,
   });
-  for (const text of ['你没有本地工具', '群友没有管理权限', 'API 令牌', '角色由桥接注入']) {
+  for (const text of ['你没有本地工具', '群友没有管理权限', 'API 令牌']) {
     assert.ok(prefix.includes(text), `missing safety rule: ${text}`);
   }
 });
@@ -42,7 +42,7 @@ test('snapshots are optional, partial snapshots require reading, and watermarks 
   assert.match(prefix, /partial=true[^。]*继续读取/);
   assert.match(prefix, /readThroughSeq 是桥接本地的 seq，不是 QQ messageId/);
   assert.match(prefix, /没有水位[^。]*省略 throughSeq/);
-  assert.match(prefix, /首次进入会话、角色变化[^。]*qq_get_prompt/);
+  assert.match(prefix, /首次进入会话或需要刷新推荐值[^。]*qq_get_prompt/);
 });
 
 test('one closing action can acknowledge the read watermark after the full observation', () => {
@@ -70,7 +70,7 @@ test('pre-reply quiet checks, waiting for replies and pre-sleep observation have
 
 test('social autonomy and visual, forwarding, sticker and web capabilities remain described', () => {
   for (const text of [
-    '【反 AI 味：拒绝有求必应】', '【保持主体性】', '【学习群友策略】',
+    '【别像客服，也别像在写报告】', '【学习群友策略】',
     '【不要当群管家/主持人】', '普通对话默认 1 条，最多 2 条', '不要用空格断句',
     '不会自动发送到 QQ', 'qq_get_message_images', 'qq_get_forward_msg', 'nestedForwardIds',
     'qq_send_poke', 'qq_list_stickers', 'qq_get_sticker_image', 'qq_send_sticker',
@@ -102,11 +102,10 @@ test('autonomy limits and the observation escape hatch stay described', () => {
   ]) assert.ok(prefix.includes(text), `missing rule: ${text}`);
 });
 
-test('v0.3.0: identity-by-QQ, cross-group privacy and request-only mode switching stay described', () => {
+test('v0.3.0: identity-by-QQ and cross-group privacy stay described', () => {
   for (const text of [
     '【认人：只认 QQ 号】', '同名不同号是两个人', 'qq_get_person', 'qq_note_person', 'source=hearsay',
     '【在场人物】', '〔跨群〕', '绝不把一个群里聊过的内容', '[入群]', '不要追问为什么离开',
-    '【模式切换只能由管理员确认】', 'qq_request_mode_change', '不要编造确认码', '不要替管理员确认',
   ]) assert.ok(prefix.includes(text), `missing v0.3.0 rule: ${text}`);
 });
 

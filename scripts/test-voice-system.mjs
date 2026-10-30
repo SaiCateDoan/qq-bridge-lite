@@ -125,7 +125,7 @@ console.log('## qq-bridge 语音系统：路由与开关');
   ok(/voiceBudgetCheck/.test(bridge) && /voiceBudgetCommit/.test(bridge), '语音额度：检查与记账分离');
   ok(/assertOutboundAuditOk/.test(bridge), '语音文件名审计存在');
   ok(/verifyVoiceMessageSent/.test(bridge), '发送后回读校验存在');
-  ok(/shouldBlockSilentReply\(key\)/.test(bridge), 'AI 语音尊重静默模式');
+  ok(!/shouldBlockSilentReply/.test(bridge), '静默模式已随 closed-agent 移除');
   ok(/allowAbsolutePath/.test(bridge), 'AI 绝对路径受配置约束');
   // 操作者通道不应被 AI 开关挡住（否则默认关闭时你自己也发不了）
   const opSection = bridge.slice(bridge.indexOf("url.pathname === '/api/voice/send' || url.pathname === '/api/send/voice'"), bridge.indexOf("'/api/socialV2/send-voice'"));

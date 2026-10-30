@@ -1,15 +1,21 @@
-# QQ ↔ DeepSeek Harness Bridge (qq-bridge-enhanced)
+# QQ ↔ DeepSeek Harness Bridge (personal lightweight build)
 
-**Supported systems: Windows · macOS · Linux** (qq-bridge-enhanced v1.0.3)
+**Supported systems: Windows · macOS · Linux** (personal lightweight build, based on qq-bridge-enhanced v1.0.3)
 
 **English**: [README.en.md](README.en.md) | **中文**: [README.md](README.md)
+
+> ⚠️ **Personal lightweight build.** This is the author's own trimmed fork, based on qq-bridge-enhanced v1.0.3 —
+> **not** a general-purpose distribution. Only the `reserved2` (gen-2 simulation) pipeline is kept; all other modes,
+> the owner/admin surface and the persona card were removed. Behaviour is **not** guaranteed to be
+> backward-compatible, and there is no general support. Use upstream / the original enhanced build for the full feature set.
+> `bridge.js` is down from 13,195 to ~10,730 lines; offline regression: `npm run test:audit` (53 scripts).
 
 > **qq-bridge-enhanced v1.0.3** — a fork of [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge) v0.2.0-r3 (with the upstream r4 fixes merged in; origin and licensing in [NOTICE.md](NOTICE.md)).
 > It turns one QQ account into an "AI group member" driven by DeepSeek Harness (DSH) agents, and runs on **Windows, macOS and Linux**.
 > Most documentation is in Chinese: the step-by-step deployment guide is [docs/DSH_DEPLOYMENT.md](docs/DSH_DEPLOYMENT.md), the changelog is [CHANGELOG.md](CHANGELOG.md),
 > and the documentation index is [docs/README.md](docs/README.md).
 
-QQ friends/groups become DSH conversations, and agent replies (including questions and tool approvals) are sent back to QQ.
+QQ friends/groups become DSH conversations, and agent replies (including questions) are sent back to QQ.
 
 ## What's in v1.0.x
 
@@ -21,10 +27,8 @@ QQ friends/groups become DSH conversations, and agent replies (including questio
 | Cross-group identity | People are identified by QQ number only — same person, different group nicknames, still one person; same nickname, different numbers, never merged | [CONTINUITY.md](docs/guides/CONTINUITY.md) |
 | Layered person memory | Group / private / global layers; by default only "this is the same person" is shared across groups, and visibility is enforced by the program when memory is injected | same |
 | Member-join awareness | New members, known people joining another group, and returning members are recognised separately; existing members are not treated as newcomers on first deployment | same |
-| Owner admin channel | Private chat `/mode agent L1~L3` → confirmation code → (TOTP for L3) → switch; `/panic` falls back at once | [ADMIN_CHANNEL.md](docs/guides/ADMIN_CHANNEL.md) |
-| Permission tiers | L0 group member / L1 read-only agent / L2 workspace read-write / L3 full access with per-action approval; there is no approval-free mode | same |
-| Approvals, fallback, audit | Numbered approvals `#n` with the real command arguments; idle high-privilege sessions fall back after 30 minutes; every change is reported to the owner; hash-chained audit log | same |
-| Mode switches keep memory (v1.0.3) | Entering agent mode puts the group / private chat sessions to sleep instead of archiving them; after fallback they resume as-is. The new agent session gets a handover of the recent private chat (owner private only, redacted). High-privilege sessions are still archived | [ADMIN_CHANNEL.md](docs/guides/ADMIN_CHANNEL.md) |
+| Single pipeline | Only `reserved2` (gen-2 simulation); `chat` / `reserved` (gen-1) / `closed-agent`, the approval / L1~L3 / TOTP admin surface and `qq-mode-console` were removed | this README |
+| QQ prompt | One "QQ prompt" page in the console: edit the whole behavioural prompt and restore the shipped default anytime; the persona comes from the harness global prompt (`dsh-context` promptSuffix), so GUI and QQ share the same self | this README |
 | Quoted merged forwards (v1.0.3) | Quoting an older merged forward no longer stalls the message for 30 s; the AI can open the quoted forward (nested ones too), results are cached | [CHANGELOG.md](CHANGELOG.md) |
 | DSH model picker | Provider / model / reasoning effort as three linked selects fed by DSH's own model catalog, applied from the next message without a restart; warns about third-party providers (chat content leaves DeepSeek), turns images into text for models that can't see images, and marks unpriced models as estimated | [CONFIGURATION.md](docs/guides/CONFIGURATION.md) |
 | DSH 0.2.1 | Works with DSH 0.2.0-rc.2 and 0.2.1; the 0.2.1 desktop app's random port is detected automatically, and the bridge follows it after DSH restarts | [DSH_020_ADAPTATION.md](docs/guides/DSH_020_ADAPTATION.md) |
@@ -47,7 +51,7 @@ NapCat needs a WebSocket server enabled in its WebUI at `127.0.0.1:3001`. This p
 | No-window launcher | `control-center-hidden.vbs` is included | **macOS**: double-click `control-center.command` once - the first run creates "QQ Bridge 控制中心.app" and selects it in Finder (or run `npm run mac-app`)<br>**Linux**: `npm run linux-service -- --enable` creates and starts a systemd user service (runs in the background, starts at login) |
 
 You don't fill in `snowluma.*` (the backend address and token) by hand — "接入桥接" (link bridge) below writes it for you.
-Optional: `npm run test:audit` (offline self-check), `npm run admin:totp-setup` (TOTP for L3).
+Optional: `npm run test:audit` (offline self-check).
 
 **First start:**
 
@@ -76,7 +80,7 @@ Interface platform (127.0.0.1:3120; OneBot-compatible entry /onebot/v11/ws)
    ⇅
 qq-bridge (bridge console 127.0.0.1:3100)  ──►  DSH Web API (desktop app or `dsh web`)
    ▲                                                   │
-   └──────── agent replies / questions / approvals ────┘
+   └──────── agent replies / questions ────┘
 
 Control center 127.0.0.1:3099 manages the bridge, the interface platform and the local QQ backend programs.
 ```
@@ -86,15 +90,15 @@ Control center 127.0.0.1:3099 manages the bridge, the interface platform and the
   event stream; verified on DSH 0.2.0-rc.2 and 0.2.1. The per-session model comes from `config.json`'s `dsh.model` (default `deepseek-flash`).
 - **Agent tools**: three bundled MCP servers expose a restricted QQ toolset (`qq_status`, `qq_get_group_history`, `qq_send_group_message`, `qq_reply`, …),
   a read-only host probe, and a read-only `web_search` / `web_fetch` pair with SSRF protection. The AI has no tool that starts or stops a QQ backend, and no privilege-escalation tool.
-- **Bridge console** (`http://127.0.0.1:3100`, opened from the control center with the token filled in): mode switching, personas, whitelist/admin settings,
-  slang library (candidates split into "to research" / "researched"), memory, stickers, and token usage & cost
+- **Bridge console** (`http://127.0.0.1:3100`, opened from the control center with the token filled in): a single **QQ prompt** page (edit / restore default),
+  sessions, whitelist/admin settings, slang library (candidates split into "to research" / "researched"), memory, stickers, and token usage & cost
   (see [docs/guides/TOKEN_USAGE_CONSOLE.md](docs/guides/TOKEN_USAGE_CONSOLE.md)).
 
 ## Features (inherited from upstream)
 
 - Bridges QQ group/private messages to DSH agent sessions; whitelist/blacklist access control, fail-closed by default.
 - Social simulation mode ("simulated group member", `reserved2`) with full simulated-group-member tooling.
-- Space-based message splitting for more natural multi-message replies.
+- Multi-message replies through `qq_send_message` arrays; the AI decides how to split.
 - Sensitive-text audit prevents paths/credentials from being sent to QQ.
 - Slang / network-expression learning with human confirmation; lightweight memory; sticker library.
 
@@ -103,14 +107,14 @@ Control center 127.0.0.1:3099 manages the bridge, the interface platform and the
 - `config.json`, `state/` and `interface-platform/state/` are **never committed or released**; the repository only ships `config.example.json`.
 - MCP send tools enforce whitelist checks and reject CQ-code injection; the audit layer filters local paths, credentials and tokens.
 - Simulation sessions get **no local execution tools at all**: the preset's `qq-tool-restrict` row hides them at registration time and a runtime allowlist rejects anything outside the QQ MCP namespaces.
-- Mode and permission changes are only executed by the bridge itself (owner admin channel with confirmation codes, TOTP for L3); full access is never mapped to DSH's approval-free `danger-full-access`.
+- This lightweight build has no mode switching, no owner admin channel, no approval/TOTP and no L1~L3: the bridge always runs `reserved2`, and chat text is never auto-forwarded (the AI sends through the QQ MCP tools only).
 - The control center, bridge console and interface platform listen on loopback only and each uses its own token.
 - See [RULES.md](RULES.md) and [docs/guides/SECURITY_BASELINE.md](docs/guides/SECURITY_BASELINE.md).
 
 ## Repository layout
 
 ```
-qq-bridge-enhanced/
+qq-bridge-lite/
   config.example.json        # sanitized config template (the real config.json is never in the repo)
   control-center-hidden.vbs  # Windows no-window launcher (control-center.bat = with a small window)
   control-center.command     # macOS launcher in Terminal; `npm run mac-app` builds the no-window app
@@ -118,7 +122,6 @@ qq-bridge-enhanced/
   src/                       # bridge core, MCP servers, control center (src/launcher/), social modules
   public/                    # control center and bridge console web pages
   dsh/agent-presets/         # DSH agent preset templates; plugins/ holds the generated DSH bundles
-  roles/                     # persona cards
   scripts/                   # setup, tests and helper scripts
   docs/                      # documentation (index: docs/README.md; folder map: docs/FOLDER_MAP.md)
   state/                     # runtime data (not in repo)

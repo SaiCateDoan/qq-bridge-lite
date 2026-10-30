@@ -8,7 +8,14 @@ import { dshModulesDir } from './dsh-modules.mjs';
 
 const DSH_MODULES = dshModulesDir();
 
-const persona = await import(pathToFileURL(path.join(DSH_MODULES, '@deepseek-ai/dsh-persona/lib/index.js')).href);
+let persona;
+try {
+  persona = await import(pathToFileURL(path.join(DSH_MODULES, '@deepseek-ai/dsh-persona/lib/index.js')).href);
+} catch {
+  console.log('⏭  跳过：找不到 @deepseek-ai/dsh-persona（DSH 桌面版打在 app.asar 里）。');
+  console.log('   可用 DSH_INSTALL_MODULES 指向解包后的模块目录再运行。');
+  process.exit(0);
+}
 
 let failed = 0;
 function check(label, fn) {

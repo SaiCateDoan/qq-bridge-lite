@@ -19,11 +19,10 @@ import * as stickerLimits from '../src/lib/sticker-limits.mjs';
 import * as modelPrices from '../src/model-prices.js';
 import * as dshModel from '../src/dsh-model.js';
 import * as quoteForward from '../src/quote-forward.js';
-import * as modeHandover from '../src/mode-handover.js';
-import * as roleCard from '../src/role-card.js';
 import * as tokenLedger from '../src/token-ledger.js';
 import * as voiceLib from '../src/send-voice-lib.js';
 import * as presetPrompt from '../src/preset-prompt.js';
+import * as presetPatches from '../src/preset-patches.js';
 import * as stateAcl from '../src/state-acl.mjs';
 import * as bridgeExt from '../src/bridge-extensions.js';
 import { unwrap, createTurnCollector } from '../src/dsh-client.js';
@@ -140,29 +139,30 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     sendToQQ, sendStickerV2, collectStickerV2, handleIncoming, startConsoleServer, cfg, state, api, promptQueues,
     getSocialV2State, appendSocialV2Message, recordSentMessagesV2,
     buildWakePromptV2, buildWakeSnapshotV2, sendWakePromptV2, socialV2,
-    refreshMode, modeAllowed, trackTurnEvent, replayPendingWakeReasonsV2,
+    trackTurnEvent, replayPendingWakeReasonsV2,
     collectors, setupSleepTimerV2,
     getInitialPrompt, setInitialPrompt, loadInitialPrompts, formatInitialPromptV2,
     initialPrompts, initialPromptMaxChars,
     extractMediaFromSegments, segmentsToText, fetchOneBotImage, fetchMediaData, resolveMediaList,
     resolveReplyInfo, seenForwardIds, forwardRawCache,
-    ownerTranscript, pendingHandover, reconcileSessionPolicies, recordOwnerTranscript, recordSentMessagesV2,
     emojiCdnCandidates, getImageDimensions, acceptImageBuffer, MAX_MEDIA_BYTES, bot,
     isConversationBusyV2, v2TurnStartAt, turnLeaseNoted, TURN_BUSY_LEASE_MS,
-    settingFromDshNamespace, selfIdentityTextV2, buildWakeReminderPromptV2,
-    getMode() { return currentMode; },
+    selfIdentityTextV2, buildWakeReminderPromptV2,
     setSelfIdentity(display, id) {
       selfDisplayName = String(display ?? '');
       selfUserId = String(id ?? '');
       selfNickname = selfDisplayName.toLowerCase() || 'deepseek';
     },
     flushQueue, retireSession,
-    ext, handleMemberNotice, reconcileGroupMembers, applyModeChange, sendOwnerDirect, tryHandleApprovalReply, initControllerOnce, looksLikeAdminChannelText,
-    setLevel(value) { currentLevel = value; },
-    getMode() { return { mode: currentMode, level: currentLevel }; },
+    ext, handleMemberNotice, reconcileGroupMembers, sendOwnerDirect,
+    // closed-agent 管理控制器已移除；旧夹具仍会调用它，桩成 no-op。
+    initControllerOnce: async () => {},
     voiceCfg, voiceLibrary, resolveVoicePathForV2, resolveVoicePathForOperator,
     voiceBudgetCheck, sendVoiceV2, sendVoiceForV2, assertOutboundAuditOk,
+    // 兼容旧测试夹具的调用面（生产代码没有模式切换）。
+    getMode() { return { mode: currentMode, level: 'L0' }; },
     setMode(value) { currentMode = value; },
+    setLevel() {},
     setReady(value) { dshReady = value; },
     setPresets(value) { dshPresetIds = value; dshDefaultPreset = 'standard'; },
     resetEpoch() { sessionEpoch++; },
@@ -184,7 +184,7 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     SnowLumaWebSocketClient: FakeBot, text: (s) => s,
     discoverDshLaunchToken: () => '', unwrap, createTurnCollector,
     ...markdown, ...sensitive, ...wait, ...safeFetch, ...forward, ...slang, ...sticker, ...stickerLimits,
-    ...modelPrices, ...dshModel, ...quoteForward, ...modeHandover, ...roleCard, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt, ...bridgeExt,
+    ...modelPrices, ...dshModel, ...quoteForward, ...tokenLedger, ...voiceLib, ...stateAcl, ...presetPrompt, ...presetPatches, ...bridgeExt,
     // ACL 收紧会 spawn icacls 去改**真实**文件系统；测试不该做这件事（同理见下面的
     // cleanupTemp / processAudioVolume 桩）。桩成成功，让 hardenStateDirAcl 走正常分支。
     hardenDir: () => ({ ok: true, detail: 'stub' }),

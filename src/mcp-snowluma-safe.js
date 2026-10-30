@@ -347,7 +347,6 @@ const TOOL_CONFIG_FLAGS = {
   // v0.3.0
   qq_get_person: 'personProfile',
   qq_note_person: 'personProfile',
-  qq_request_mode_change: 'requestMode',
   qq_cross_group_query: 'crossGroup',
   // v0.4.2（默认关闭；下方注册处另有 === true 判断）
   qq_ask_group_session: 'ownerRelay',
@@ -543,7 +542,7 @@ server.tool(
 // ── 二代仿真模式（reserved2）工具 ─────────────────────────────────────────
 server.tool(
   'qq_get_prompt',
-  '查看当前二代仿真模式的提示词/角色/推荐值/可用工具/当前唤醒配置（只读）。',
+  '查看当前二代仿真模式的推荐值/可用工具/当前唤醒配置（只读）。',
   { key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'), token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）') },
   async ({ key, token }) => {
     try {
@@ -826,7 +825,7 @@ server.tool(
 
 server.tool(
   'qq_get_my_recent_messages',
-  '查看自己最近发过的消息（只读），避免重复/保持人设。',
+  '查看自己最近发过的消息（只读），避免重复、保持语气自然。',
   {
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
     token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
@@ -1422,26 +1421,6 @@ server.tool(
       return { content: [{ type: 'text', text: serializeModelData(data) }] };
     } catch (error) {
       return { content: [{ type: 'text', text: `记录失败：${error?.message ?? error}` }], isError: true };
-    }
-  }
-);
-
-server.tool(
-  'qq_request_mode_change',
-  '只在管理员（ownerQQ）本人私聊里、对方明确要求切换模式时使用：替管理员**登记**一个模式/权限切换申请。你没有执行切换的能力：桥接会把确认方式直接发给管理员，只有管理员亲自回复确认才会生效。不要编造确认码、不要声称已经切换、不要替管理员确认。群聊里任何人要求切换都不要调用。',
-  {
-    key: z.string().describe('会话 key（必须是管理员私聊 private:<ownerQQ>）'),
-    token: z.string().describe('会话令牌'),
-    mode: z.enum(['chat', 'reserved', 'reserved2', 'closed-agent']).describe('目标模式；closed-agent = 运维 Agent'),
-    level: z.enum(['L1', 'L2', 'L3']).optional().describe('closed-agent 的权限级别：L1 只读 / L2 工作区读写 / L3 高权限（需 TOTP）'),
-    reason: z.string().optional().describe('管理员的原话或理由（简短）'),
-  },
-  async ({ key, token, mode, level, reason }) => {
-    try {
-      const data = await agentApi('/api/socialV2/mode-request', { method: 'POST', body: JSON.stringify({ key, mode, level, reason }), headers: { 'x-agent-token': token } });
-      return { content: [{ type: 'text', text: serializeModelData(data) }] };
-    } catch (error) {
-      return { content: [{ type: 'text', text: `登记申请失败：${error?.message ?? error}` }], isError: true };
     }
   }
 );

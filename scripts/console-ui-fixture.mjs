@@ -4,7 +4,6 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { roleCharStats, roleSectionReport } from '../src/role-card.js';
 import { pickBucketMs } from '../src/token-ledger.js';
 import { manualDirCommand } from '../src/state-acl.mjs';
 
@@ -12,12 +11,16 @@ export const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..'
 const timestamp = '2026-09-20T08:30:00.000Z';
 
 // 预设状态：mock 直接复用真实字段口径，避免与 bridge.js 漂移。
-function presetStatusFixture(preset) {
+function presetStatusFixture() {
   return {
-    preset,
-    label: preset === 'qq-chat' ? '一代仿真（reserved）' : '二代仿真（reserved2）',
-    sourceFile: `dsh/agent-presets/${preset}/agent.cordis.yml`,
-    installed: true,
+    preset: 'qq-chat-v2',
+    label: '二代仿真（reserved2）',
+    sourceFile: 'dsh/agent-presets/qq-chat-v2/agent.cordis.yml',
+    defaultFile: 'dsh/agent-presets/qq-chat-v2/agent.default.yml',
+    patchFile: 'plugins/qq-agent-presets/presets/qq-chat-v2.patch.yml',
+    patchSynced: true,
+    hasDefault: true,
+    isDefault: true,
     requiresRestart: true,
   };
 }
@@ -403,57 +406,17 @@ export async function startConsoleFixture({ port = 0, original = false, htmlPath
         switch (path) {
           case '/api/status': return json({ ok: true, dshReady: true, mode: state.mode, role: state.role, roleMode: state.roleMode, closedAgentPreset: state.closedAgentPreset, ownerQQ: state.whitelist.ownerQQ, allowGroups: state.whitelist.allow.groups, allowPrivate: state.whitelist.allow.private, activity: '[08:30:00] 演示桥接已连接\n[08:30:12] group:123456789 · 已处理一条消息\n[08:30:20] 二代社交助手正在运行\n以上均为离线模拟数据。' });
           case '/api/presets': return json({ presets: [{ id: 'qq-chat-v2', trust: 'user' }, { id: 'qq-chat', trust: 'user' }] });
-          case '/api/roles': return json({
-            roles: state.roles.slice(),
-            summaries: state.roles.map((name) => {
-              const content = state.roleContents[name] ?? '';
-              const stats = roleCharStats(content);
-              const injectMax = state.roleInjectMax;
-              return {
-                name,
-                bytes: Buffer.byteLength(content, 'utf8'),
-                chars: content.length,
-                lines: content.split('\n').length,
-                mtime: Date.parse(timestamp),
-                excerpt: content.split('\n').find((line) => line.trim() && !line.trim().startsWith('#')) ?? '',
-                injectedV1: Math.min(stats.v1, injectMax),
-                injectedV2: Math.min(stats.v2, injectMax),
-                charsV1: stats.v1,
-                charsV2: stats.v2,
-                hasModeTags: stats.v1Only > 0 || stats.v2Only > 0,
-                truncated: stats.v1 > injectMax || stats.v2 > injectMax,
-                warnings: 0,
-              };
-            }),
-            current: state.role,
-            limits: { nameMax: 40, contentMaxBytes: 65536, injectMaxChars: state.roleInjectMax },
-          });
-          case '/api/roles/content': {
-            const name = url.searchParams.get('name') ?? '';
-            if (!state.roleContents[name]) return json({ ok: false, error: `人格「${name}」不存在` }, 404);
-            const content = state.roleContents[name];
+          case '/api/preset/sim-prompt': {
+            const content = state.simPrompts['qq-chat-v2'];
             return json({
               ok: true,
-              name,
               content,
               chars: content.length,
               bytes: Buffer.byteLength(content, 'utf8'),
               warnings: [],
-              limits: { injectMaxChars: state.roleInjectMax },
-              stats: roleCharStats(content),
-              sections: { v1: roleSectionReport(content, 'v1'), v2: roleSectionReport(content, 'v2') },
-            });
-          }
-          case '/api/preset/sim-prompt': {
-            const preset = url.searchParams.get('preset') === 'qq-chat' ? 'qq-chat' : 'qq-chat-v2';
-            return json({
-              ok: true,
-              content: state.simPrompts[preset],
-              chars: state.simPrompts[preset].length,
-              bytes: Buffer.byteLength(state.simPrompts[preset], 'utf8'),
-              warnings: [],
-              status: presetStatusFixture(preset),
-              presets: [presetStatusFixture('qq-chat'), presetStatusFixture('qq-chat-v2')],
+              defaultContent: state.simPrompts['qq-chat-v2'],
+              isDefault: true,
+              status: presetStatusFixture(),
             });
           }
           case '/api/preset/sim-prompt/backups': {
@@ -543,33 +506,15 @@ export async function startConsoleFixture({ port = 0, original = false, htmlPath
       }
       if (method === 'POST') {
         switch (path) {
-          case '/api/mode': state.mode = body.mode; state.closedAgentPreset = body.closedAgentPreset; return json({ ok: true, dshSynced: true });
-          case '/api/role': state.role = body.role; return json({ ok: true });
-          case '/api/roles/create': state.roles.push(body.name); state.roleContents[body.name] = body.content ?? ''; return json({ ok: true, role: body.name, warnings: [] });
-          case '/api/roles/update': state.roleContents[body.name] = body.content ?? ''; return json({ ok: true, role: body.name, chars: String(body.content ?? '').length, warnings: [] });
-          case '/api/roles/rename': {
-            const idx = state.roles.indexOf(body.from);
-            if (idx >= 0) state.roles[idx] = body.to;
-            state.roleContents[body.to] = state.roleContents[body.from] ?? '';
-            delete state.roleContents[body.from];
-            if (state.role === body.from) state.role = body.to;
-            return json({ ok: true, role: body.to, renamed: true, currentFollowed: state.role === body.to });
-          }
-          case '/api/roles/delete': {
-            const idx = state.roles.indexOf(body.name);
-            if (idx >= 0) state.roles.splice(idx, 1);
-            delete state.roleContents[body.name];
-            const cleared = state.role === body.name;
-            if (cleared) state.role = null;
-            return json({ ok: true, deleted: body.name, clearedCurrent: cleared });
-          }
-          case '/api/roles/limit': state.roleInjectMax = Number(body.maxInjectChars) || state.roleInjectMax; return json({ ok: true, maxInjectChars: state.roleInjectMax, limits: { injectMaxChars: state.roleInjectMax } });
           case '/api/preset/sim-prompt': {
-            const preset = body.preset === 'qq-chat' ? 'qq-chat' : 'qq-chat-v2';
             const content = String(body.content ?? '');
-            const unchanged = content === state.simPrompts[preset];
-            if (!unchanged) state.simPrompts[preset] = content;
-            return json({ ok: true, unchanged, chars: content.length, warnings: [], synced: true, requiresRestart: !unchanged, status: presetStatusFixture(preset) });
+            const unchanged = content === state.simPrompts['qq-chat-v2'];
+            if (!unchanged) state.simPrompts['qq-chat-v2'] = content;
+            return json({ ok: true, unchanged, chars: content.length, warnings: [], requiresRestart: !unchanged, status: { ...presetStatusFixture(), isDefault: false } });
+          }
+          case '/api/preset/sim-prompt/reset': {
+            state.simPrompts['qq-chat-v2'] = state.simPrompts['qq-chat-v2'];
+            return json({ ok: true, restoredDefault: true, chars: state.simPrompts['qq-chat-v2'].length, requiresRestart: true, status: presetStatusFixture() });
           }
           case '/api/preset/sim-prompt/restore': {
             const preset = body.preset === 'qq-chat' ? 'qq-chat' : 'qq-chat-v2';

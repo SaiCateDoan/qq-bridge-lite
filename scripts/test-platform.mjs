@@ -37,10 +37,10 @@ async function until(fn, ms = 8000, what = '条件') {
 
 test('① 接口平台自身测试全部通过', { skip: SKIP }, () => {
   const r = spawnSync(process.execPath, ['--test', '--test-timeout=30000', 'test/units.test.mjs', 'test/e2e.test.mjs'], { cwd: PLATFORM_DIR, encoding: 'utf8', timeout: 120_000 });
-  const summary = (r.stdout ?? '').split('\n').filter((l) => /^# (tests|pass|fail)/.test(l)).join(' / ');
+  const summary = (r.stdout ?? '').split('\n').filter((l) => /^(#|ℹ) (tests|pass|fail)/.test(l)).join(' / ');
   assert.equal(r.status, 0, `${summary}\n${(r.stdout ?? '').split('\n').filter((l) => /^not ok|error:|expected|actual/.test(l)).join('\n')}${r.stderr ?? ''}`);
-  assert.match(summary, /# fail 0/);
-  assert.match(summary, /# pass [1-9]/);
+  assert.match(summary, /(?:#|ℹ) fail 0/);
+  assert.match(summary, /(?:#|ℹ) pass [1-9]/);
 });
 
 async function api(port, token, method, route, body) {

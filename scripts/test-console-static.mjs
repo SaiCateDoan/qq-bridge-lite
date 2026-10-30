@@ -46,24 +46,6 @@ const big = scripts.sort((a, b) => b.length - a.length)[0];
 try { new Function(big); ok(true, '主 script 语法可解析', `${big.length} 字符`); }
 catch (e) { ok(false, '主 script 语法', e.message); }
 
-console.log('## 人格快捷选择（v0.4.1）');
-ok(/id="roleInput"[^>]*role="combobox"/.test(html) && /id="roleSuggest"[^>]*role="listbox"/.test(html), '切换人格输入框带下拉候选（combobox + listbox）');
-{
-  const src = /function filterRoleSuggestions\([\s\S]*?\n\}/.exec(html)?.[0];
-  ok(!!src, 'filterRoleSuggestions 已定义');
-  if (src) {
-    const filter = new Function(`${src}; return filterRoleSuggestions;`)();
-    const names = ['AAA', 'BBB', 'CCC', 'ABB'];
-    ok(JSON.stringify(filter(names, '')) === JSON.stringify(names), '空输入列出全部人格');
-    ok(JSON.stringify(filter(names, 'A')) === '["AAA","ABB"]', '输入 A → AAA、ABB');
-    ok(JSON.stringify(filter(names, 'AA')) === '["AAA"]', '输入 AA → 只剩 AAA');
-    ok(JSON.stringify(filter(names, 'a')) === '["AAA","ABB"]', '不区分大小写');
-    ok(JSON.stringify(filter(names, 'B')) === '["BBB"]', '只按开头匹配（ABB 不因含 B 而出现）');
-  }
-  ok(/addEventListener\('mousedown', \(e\) => \{ e\.preventDefault\(\); pick\(name\)/.test(html), '点击候选填入输入框（mousedown 防失焦）');
-  ok(/e\.key === 'ArrowDown'/.test(html) && /e\.key === 'Escape'/.test(html), '键盘 ↑↓ / 回车 / Esc');
-}
-
 console.log('## 语音图形界面的音量控件');
 if (!hasVoiceTool()) {
   // 这一整段查的是独立工具自己的页面（voice.html），仓库里没有它。

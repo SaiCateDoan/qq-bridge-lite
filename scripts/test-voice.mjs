@@ -171,7 +171,7 @@ console.log('## 安全边界（AI 通道来源限制）');
   const sendRoute = bridge.slice(bridge.indexOf("url.pathname === '/api/socialV2/send-voice'"), bridge.indexOf("url.pathname === '/api/socialV2/send-sticker'"));
   ok(sendRoute.includes('v2SessionAllowed(key)'), '语音发送校验会话白名单');
   ok(sendRoute.includes('agentTokenOk(key, token)'), '语音发送校验 agent token');
-  ok(sendRoute.includes('shouldBlockSilentReply(key)'), '语音发送尊重静默模式');
+  ok(!bridge.includes('shouldBlockSilentReply'), '静默模式已随 closed-agent 移除（语音不再被静默拦截）');
   ok(sendRoute.includes('voiceBudgetCheck'), '语音发送走语音限流');
 }
 
@@ -265,36 +265,6 @@ console.log('## 回归：AI 语音通道不许穿出语音库（P1，曾可复�
     }
     ok(accepted.every((p) => p.startsWith(dir + path.sep)), '被接受的路径全部落在语音库内', `${accepted.length} 个被接受`);
   } finally { await h.close(); }
-}
-
-console.log('## 回归：长消息里的 URL 不许被切碎（P1，曾静默丢 URL）');
-{
-  // 由来：splitLongSegment 用 \u0000URL<n>\u0000 占位符保护 URL，但对超长片段直接按
-  // max 硬切，会拦腰切断占位符 → 还原正则失配 → URL 整条消失 + 裸 NUL + 字面量 "URL0"
-  // 被发进 QQ 消息。这里把函数从 bridge.js 抽出来，对 1..max+20 所有长度做校验。
-  const src = fs.readFileSync(path.join(ROOT, 'src', 'bridge.js'), 'utf8');
-  const at = src.indexOf('function splitLongSegment');
-  ok(at > 0, '在 bridge.js 里找到 splitLongSegment');
-  if (at > 0) {
-    const endMarker = src.indexOf('\n  }', src.indexOf('return out', at));
-    const fnSrc = src.slice(at, endMarker + 4);
-    const splitLongSegment = eval(`(${fnSrc})`);   // eslint-disable-line no-eval
-    const url = 'https://example.com/very/long/path?q=1&x=2';
-    const max = 500;
-    let broken = 0;
-    const samples = [];
-    for (let n = 1; n <= max + 20; n++) {
-      const parts = splitLongSegment('啊'.repeat(n) + url, max);
-      const joined = parts.join('');
-      const bad = !joined.includes(url) || joined.includes('\u0000') || joined.includes('URL0') || joined.includes('URL1');
-      if (bad) { broken += 1; if (samples.length < 3) samples.push(`${n}:${JSON.stringify(parts.slice(-2))}`); }
-    }
-    ok(broken === 0, `1~${max + 20} 所有长度下 URL 都完整、无 NUL 泄漏`, broken ? `${broken} 个损坏，例：${samples.join(' ')}` : `共检查 ${max + 20} 个长度`);
-    const worst = Math.max(...splitLongSegment('啊'.repeat(2000) + url, max).map((s) => s.length));
-    ok(worst <= max + 40, '分段长度仍在合理范围（占位符不可切的让步）', `最长 ${worst}`);
-    const two = splitLongSegment('啊'.repeat(600) + url + '中间' + url, max).join('');
-    ok(two.includes(url) && two.split(url).length - 1 === 2, '两个 URL 都保留');
-  }
 }
 
 console.log('## 回归：AI 通道的语音库响应不许带出绝对路径（P1）');

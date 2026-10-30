@@ -2,12 +2,12 @@
 // setup-dsh.mjs — 在目标设备上安装 qq-bridge 的 DSH 端配置
 //
 // 功能：
-//   1. 安装两套 agent preset：qq-chat、qq-chat-v2
+//   1. 安装 agent preset：qq-chat-v2（唯一的二代仿真链路）
 //      （DSH 0.1.7 机制：作为 qq-agent-presets bundle 的 patch 层插入
 //        @deepseek-ai/dsh-agent-preset 行；~/.dsh/.agent-presets/ 目录已不再被读取）
 //   2. 在 DSH profile 的 cordis.patch.yml 中挂载三个 MCP server：
 //      mcp-snowluma / mcp-snowluma-host / mcp-web-search-safe
-//   3. 在 profile package.json 中注册两个 bundle：qq-mode-console、qq-agent-presets
+//   3. 在 profile package.json 中注册 qq-agent-presets bundle
 //
 // 用法：
 //   node scripts/setup-dsh.mjs [profile]
@@ -102,7 +102,7 @@ function backupBeforeOverwrite(file, keep = 5) {
 //          ① 把 qq-agent-presets bundle 注册进 profile（link: 依赖 + bundles + junction）；
 //          ② 从仓库权威源（dsh/agent-presets/<preset>/）重新生成 patch 文件。
 //        旧目录不再写入、也不删除（见 reportLegacyPresetDir）。
-const BUNDLE_NAMES = ['qq-mode-console', 'qq-agent-presets'];
+const BUNDLE_NAMES = ['qq-agent-presets'];
 
 /** 从仓库源重新生成 bundle 里的 patch 文件（人格正文/工具面改了就必须重跑）。 */
 function regeneratePresetPatches() {
@@ -375,21 +375,7 @@ function patchProfilePackage(links) {
   log(`profile package.json ensured: ${pkgFile}`);
 }
 
-function ensureLocalModeFile() {
-  const stateDir = path.join(REPO_ROOT, 'state');
-  const modeFile = path.join(stateDir, 'mode.json');
-  if (fs.existsSync(modeFile)) {
-    log(`state/mode.json already exists; leave as-is (current mode may be user-configured)`);
-    return;
-  }
-  ensureDir(stateDir);
-  // DSH 0.1.5 起不再有 'router-standard' preset；留空表示「用 DSH 自己声明的默认 preset」，
-  // 由 bridge.js 的 resolvePresetName() 兜底（硬编码已下线的名字只会换来每次启动的误导性告警）。
-  fs.writeFileSync(modeFile, `${JSON.stringify({ mode: 'reserved2', closedAgentPreset: '' }, null, 2)}\n`, 'utf8');
-  log(`state/mode.json created with mode=reserved2 (fallback if DSH settings are not available)`);
-}
-
-// qq-mode-console / qq-agent-presets 以 link: 依赖注册进 profile package.json 后，DSH 首次启动
+// qq-agent-presets 以 link: 依赖注册进 profile package.json 后，DSH 首次启动
 // 需要先安装一次才能解析这些 bundle（否则 cold start 报 "cannot resolve profile bundle"）。
 // dsh CLI 可用时自动执行。
 function autoInstallProfileBundles() {
@@ -441,6 +427,5 @@ const links = {};
 for (const name of BUNDLE_NAMES) links[name] = ensureBundle(name);
 patchProfilePackage(links);
 reportLegacyPresetDir();
-ensureLocalModeFile();
 autoInstallProfileBundles();
 log('Done. Restart DSH (or reload the profile) so the new presets/MCP take effect.');

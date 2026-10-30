@@ -71,7 +71,6 @@ async function withHarness(botRequest, run, { tempDir } = {}) {
     h.appendSocialV2Message(KEY, '甲', '[表情]', '[表情]', false, false, '777', [{ kind: 'image', url: 'https://public.invalid/a.gif' }], '20001');
     await run(h);
   } finally {
-    h.ext.controller.stop();
     await h.close();
   }
 }
