@@ -56,6 +56,8 @@ macOS 双击 `control-center.command`；Linux 用 `npm run control-center` 或 s
 
 之后日常只需要打开控制中心 → 开启后端 → 启动桥接。不要在控制中心和 `start.bat` 同时启动桥接（桥接是单实例）。
 
+> 如果 SnowLuma 只有 WebUI（5099）在监听、没有 3000/3001：说明 QQ 进程还没被注入。把 `SnowLuma\config\runtime.json` 的 `hookAutoLoad` 设为 `true` 并重启 SnowLuma；或在 SnowLuma WebUI 里手动加载 QQ 进程。日志出现 `[Hook] login detected` 与 `[OneBot.HTTP]/[OneBot.WS-Server] listening` 才算后端就绪。
+
 ## 快速开始
 
 要求：Node.js ≥ 22.13、可用的 DSH、自己安装并能登录的 QQ 后端（SnowLuma 或 NapCat）。本项目不下载、不安装 QQ 后端。
