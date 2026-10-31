@@ -12,15 +12,58 @@
 
 来源、MIT 授权与第三方边界见 [NOTICE.md](NOTICE.md) 和 [LICENSE](LICENSE)。本项目与两个上游的作者、DeepSeek、SnowLuma、腾讯均无隶属关系。
 
-## 当前能力
+## 本分支自己实现 / 重构的能力
 
-- **单链路二代仿真**：工具自主收发、引用/合并转发、拍一拍、等待与潜水、唤醒条件。
-- **人物与群记忆**：按 QQ 号认人（同名不同号不合并）、群内/私聊/全局分层记忆、入群感知、群规、owner 私聊托付。
-- **提示词**：控制台只有一套 `qq-chat-v2` 行为提示词；人设由 DSH 全局提示词提供，桥接只负责 QQ 场景规则。
-- **表情三选一**：AstrBot 本地图库/远程包（默认）、QQ 收藏、DSH dsh-meme；只注册当前链路的工具，图库互不互通。
-- **语音**：语音库 `qq_send_voice` / `qq_list_voices`；本地 GPT-SoVITS 文字转语音 `qq_speak(text)`。
-- **媒体**：大图压缩、动图抽帧、图片/表情理解、合并转发读取。
-- **模型与控制台**：DSH 模型选择、思考强度、工具开关、会话/日志/令牌/安全页。
+以下功能是这条分支自己写或重写的，提交记录可查。
+
+### 轻量单链路重构（`9fbf264`）
+
+- 删除 chat / closed-agent / 一代仿真，只保留 `reserved2` 二代仿真一条链路。
+- 删除角色卡、L1~L3 管理面、审批/TOTP、`qq-mode-console` 等不再维护的分支。
+- 把三套提示词收敛为 **一套 `qq-chat-v2`**；人设交给 DSH 全局提示词，桥接只负责 QQ 场景规则。
+- 清掉自动转发、旧社交状态机等死代码；后续只在这条链路上加功能。
+
+### 多模态媒体增强（`52370ac`、`7914f99`）
+
+- `src/media-compress.js`：用 sharp/WebP 做超大图自适应压缩，不再直接丢弃。
+- 动图按首尾均匀抽帧，默认拼成 3×2 网格；可配置多帧，单图/单条都有独立预算。
+- 统一 `socialV2.media` 的下载大小、解码像素、长边、质量、帧数与单帧预算。
+- 附带时间感知、依赖告警清理等运行时改进。
+
+### 表情三链路与封面代理（`5856695`、`9470fd6`、`76dc608`）
+
+- `src/meme-library.js`：本地内容哈希图库，收图、去重、索引恢复、按描述/情绪/标签检索。
+- `src/meme-packs.js`：解析 AstrBot 社区索引、manifest、GitHub tree；支持逐图语义元数据和异步包下载。
+- `src/dsh-meme-client.js`：只走回环 HTTP，读取/搜索 DSH dsh-meme 图库、下载原图、上传收藏。
+- `socialV2.memeBackend`：`astrbot` / `qq` / `dshmeme` 三选一；MCP 注册期过滤、接口强校验，三套图库互不互通。
+- 控制台「表情链路」选择器与「表情图库」页；AstrBot 远程包封面由桥接抓取并转成 data URL，绕开浏览器 CSP，同时做批量并发与缓存。
+
+### 本地 GPT-SoVITS 语音（`c51b946`）
+
+- `src/tts-client.js`：只允许回环地址，校验 WAV 头、大小和超时，错误转成可读信息。
+- `socialV2.tts`：API 地址、参考音频、参考原话、语言、语速、字数、超时、音量/响度归一。
+- MCP 工具 `qq_speak(text)` + `POST /api/socialV2/tts`：文字合成 WAV 后复用现有 `record` 发送链路，继续走白名单、agent token、语音限流、审计和落地回读。
+- 控制台「二代仿真 → 本地 TTS（GPT-SoVITS）」可配置并试听；`POST /api/tts/preview` 只返回音频，不发送到 QQ。
+- 对 TTS 原始输出默认做 loudnorm，避免模型音量过轻。
+
+### 文档与运维经验
+
+- 重新整理 README、配置说明和 SnowLuma 排障说明。
+- SnowLuma 只有 WebUI 时，检查 `config/runtime.json` 的 `hookAutoLoad`：`true` 才会自动注入已运行的 QQ，3000/3001 才会监听。
+
+## 从上游继承 / 合并的能力
+
+这些能力来自两个上游或既有增强版的实现，本分支主要做适配、维护和修 bug，不把它们算作本分支从零实现：
+
+| 能力 | 说明 |
+| --- | --- |
+| 桥接基础链路 | OneBot v11 客户端、QQ 消息与 DSH 会话映射、发送队列、白名单/会话令牌/审计、引用与合并转发读取 |
+| `reserved2` 仿真骨架 | 工具自主收发、等待与潜水、唤醒条件、回复检查、拍一拍、群聊记忆的原始实现 |
+| 人物与群记忆 | 按 QQ 号认人、群内/私聊/全局分层记忆、入群感知、群规、owner 私聊托付 |
+| 提示词与 DSH 接入 | `qq-chat-v2` 原始提示词内容、preset bundle、DSH 协议适配、模型/思考强度选择、token/花费看板 |
+| 控制中心与接口平台 | `3099` 控制中心、`interface-platform/` 统一接入层、SnowLuma/NapCat 生命周期、更新助手、NapCat 二维码 |
+| 语音库 | `qq_send_voice` / `qq_list_voices`、音频探测与本地音量处理、独立 `../voice-tool/` |
+| 上游修复合并 | 按需合入两个上游的修复（DSH 适配、接口平台健康检查等），具体见 [CHANGELOG.md](CHANGELOG.md) |
 
 ## 两个端口
 

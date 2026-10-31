@@ -12,15 +12,58 @@ This repository references and merges what fits this branch from:
 
 It is **not tied to a specific upstream version**. Attribution, MIT licensing and third-party boundaries are in [NOTICE.md](NOTICE.md) and [LICENSE](LICENSE).
 
-## Features
+## Implemented in this branch
 
-- Single `reserved2` pipeline: autonomous tool use, replies/quotes, merged forwards, poke, wait/dive, wake rules.
-- People and group memory by QQ number, layered group/private/global memory, member-join awareness, group rules, owner relay.
-- One `qq-chat-v2` behavioural prompt; persona comes from the DSH global prompt.
-- One of three meme backends: AstrBot local/remote packs (default), QQ favorites, DSH dsh-meme. Only the active backend's tools are registered.
-- Voice: library `qq_send_voice` / `qq_list_voices`; local GPT-SoVITS `qq_speak(text)`.
-- Media: large-image compression, animated frames, image/sticker understanding, merged-forward reading.
-- DSH model picker, reasoning effort, tool switches, sessions/logs/tokens/security pages.
+These are the features written or rewritten in this branch (commit hashes in parentheses).
+
+### Lightweight single-pipeline refactor (`9fbf264`)
+
+- Removed `chat` / `closed-agent` / gen-1 simulation; only `reserved2` remains.
+- Removed persona cards, the L1–L3 admin surface, approvals/TOTP and `qq-mode-console`.
+- Collapsed prompts into one `qq-chat-v2`; persona stays in the DSH global prompt.
+- Deleted the old social state machine and dead auto-forwarding code.
+
+### Multimodal media (`52370ac`, `7914f99`)
+
+- `src/media-compress.js`: sharp/WebP adaptive compression for oversized images.
+- Animated images are sampled evenly and tiled into a 3×2 contact sheet by default; multi-frame optional.
+- Unified `socialV2.media` budgets: download size, decode pixels, long edge, quality, frame count and per-frame bytes.
+- Time-awareness and dependency-warning cleanup.
+
+### Meme backends and cover proxy (`5856695`, `9470fd6`, `76dc608`)
+
+- `src/meme-library.js`: content-addressed local gallery, dedupe, index recovery, description/emotion/tag search.
+- `src/meme-packs.js`: AstrBot community index, manifest, GitHub tree and optional semantic metadata; async pack downloads.
+- `src/dsh-meme-client.js`: loopback HTTP access to the DSH dsh-meme gallery.
+- `socialV2.memeBackend`: `astrbot` / `qq` / `dshmeme`, one active at a time; MCP registration-time filtering and backend route guards.
+- Console backend selector and meme gallery; AstrBot pack covers are fetched server-side as data URLs (CSP-safe), batched and cached.
+
+### Local GPT-SoVITS voice (`c51b946`)
+
+- `src/tts-client.js`: loopback-only, validates WAV header, size and timeout, readable errors.
+- `socialV2.tts`: API URL, reference audio/text, languages, speed, max chars, timeout, volume/loudness normalisation.
+- `qq_speak(text)` MCP tool and `POST /api/socialV2/tts`: WAV goes through the existing `record` path with allowlists, agent token, voice rate limits, auditing and read-back.
+- Console "Gen-2 simulation → Local TTS" settings with preview; `POST /api/tts/preview` never sends to QQ.
+- Loudnorm is applied by default because raw TTS output is often too quiet.
+
+### Docs and operations
+
+- Simplified README/configuration/SnowLuma troubleshooting.
+- SnowLuma troubleshooting: if only WebUI 5099 is listening, set `hookAutoLoad: true` in `SnowLuma/config/runtime.json` so it injects the running QQ process and opens 3000/3001.
+
+## Inherited / merged from upstreams
+
+These come from the two upstreams or the existing enhanced lineage. This branch mainly adapts, maintains and fixes them; they are not claimed as original work here:
+
+| Capability | Notes |
+| --- | --- |
+| Bridge core | OneBot v11 client, QQ↔DSH session mapping, send queue, allowlists/agent tokens/auditing, quote and merged-forward reading |
+| `reserved2` simulation skeleton | Autonomous tools, wait/dive, wake rules, reply checks, poke, original group memory |
+| People/group memory | QQ-number identity, group/private/global layers, member-join awareness, group rules, owner relay |
+| Prompts and DSH integration | Original `qq-chat-v2` content, preset bundle, DSH protocol adaptation, model/reasoning picker, token/cost dashboard |
+| Control center and interface platform | 3099 control center, `interface-platform/`, SnowLuma/NapCat lifecycle, update helper, NapCat QR |
+| Voice library | `qq_send_voice` / `qq_list_voices`, audio probing/local volume processing, standalone `../voice-tool/` |
+| Upstream fixes | Selected fixes merged as needed (DSH adaptation, interface-platform health checks, etc.); see [CHANGELOG.md](CHANGELOG.md) |
 
 ## Two ports
 
@@ -55,6 +98,8 @@ In the control center:
 6. The status bar should be green: platform "1 account ready · bridge linked", QQ "online", DSH "ready".
 
 Daily routine: open control center → start backend → start bridge. Do not run `start.bat` and the control center's bridge at the same time (single instance).
+
+> If only SnowLuma WebUI (5099) is listening and 3000/3001 are missing, QQ has not been injected yet. Set `hookAutoLoad` to `true` in `SnowLuma/config/runtime.json` and restart SnowLuma, or load the QQ process manually in its WebUI. Wait for `[Hook] login detected` and `[OneBot.HTTP]/[OneBot.WS-Server] listening`.
 
 ## Quick start
 
