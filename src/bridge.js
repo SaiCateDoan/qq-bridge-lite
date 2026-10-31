@@ -2482,6 +2482,62 @@ async function main() {
     return covers;
   }
 
+  /**
+   * 控制台封面缩略图：浏览器受 CSP default-src 'self' 限制，不能直接加载
+   * raw.githubusercontent.com；这里由桥接取图并转成 data: URL，前端只负责渲染。
+   * 24 个包按 512px/180KB 压成缩略图，避免一次返回几十 MB。
+   */
+  const packCoverCache = new Map();
+  async function packCoverThumbs(packs, limit = 24) {
+    const list = packs.slice(0, Math.max(0, Math.min(40, limit)));
+    const out = [];
+    const loadOne = async (pack) => {
+      const url = (pack.previews || [])[0];
+      if (!url) return null;
+      const cached = packCoverCache.get(url);
+      if (cached) return { packId: pack.id, mimeType: cached.mimeType, data: cached.data };
+      try {
+        const fetched = await safeFetchBuffer(url, MAX_MEDIA_FETCH_BYTES);
+        let buffer = fetched.buffer;
+        let mimeType = mimeFromBuffer(buffer) || 'image/jpeg';
+        if (hasImageCodec()) {
+          try {
+            const prepared = await prepareImage(buffer, {
+              maxBytes: 180 * 1024,
+              maxPixels: 4_000_000,
+              maxLongEdge: 512,
+              quality: 78,
+              animatedFrames: 1,
+              animatedLayout: 'first',
+              tileWidth: 512,
+              frameLongEdge: 512,
+              frameBytes: 180 * 1024,
+              maxDecodePixels: MAX_MEDIA_DECODE_PIXELS
+            });
+            const first = prepared?.frames?.[0];
+            if (first?.buffer?.length) {
+              buffer = first.buffer;
+              mimeType = first.mimeType || mimeType;
+            }
+          } catch {}
+        }
+        const data = `data:${mimeType};base64,${buffer.toString('base64')}`;
+        packCoverCache.set(url, { mimeType, data });
+        while (packCoverCache.size > 120) packCoverCache.delete(packCoverCache.keys().next().value);
+        return { packId: pack.id, mimeType, data };
+      } catch (error) {
+        log(`[packs] 封面缩略图读取失败 ${pack.id}: ${error?.message ?? error}`);
+        return null;
+      }
+    };
+    // 控制台一页 24 个包；串行会等太久，按 6 个一批并发，失败不影响其它封面。
+    for (let i = 0; i < list.length; i += 6) {
+      const batch = await Promise.all(list.slice(i, i + 6).map(loadOne));
+      for (const item of batch) if (item) out.push(item);
+    }
+    return out;
+  }
+
   async function syncMemesFromRemote(rawUrl) {
     if (!memesEnabled()) throw new Error(memeInitError || '本地图库未启用');
     const url = String(rawUrl ?? '').trim();
@@ -3793,7 +3849,7 @@ async function main() {
       }
       const SECURITY_HEADERS = {
         'X-Frame-Options': 'DENY',
-        'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'",
+        'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:",
         'Cache-Control': 'no-store',
         'X-Content-Type-Options': 'nosniff',
         'Referrer-Policy': 'no-referrer'
@@ -6114,7 +6170,8 @@ async function main() {
           const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 20));
           try {
             const packs = await searchPackCatalog(query, limit);
-            sendJson({ ok: true, query, packs, remoteUrl: cfg.socialV2?.memes?.remoteUrl || '' });
+            const covers = await packCoverThumbs(packs, limit);
+            sendJson({ ok: true, query, packs, covers, remoteUrl: cfg.socialV2?.memes?.remoteUrl || '' });
           } catch (error) {
             sendJson({ ok: false, error: '读取表情包目录失败：' + (error?.message ?? error) }, 500);
           }

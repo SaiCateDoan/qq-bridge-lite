@@ -4233,13 +4233,14 @@ function fmtPackJob(job) {
 function renderMemePacks(data) {
   const box = document.getElementById('memePackList');
   const packs = Array.isArray(data?.packs) ? data.packs : [];
+  const coverMap = new Map((Array.isArray(data?.covers) ? data.covers : []).map((c) => [c.packId, c.data]));
   document.getElementById('memePackNote').textContent = data?.remoteUrl ? `共 ${packs.length} 个候选` : '先保存图库地址';
   if (!packs.length) {
     box.textContent = data?.remoteUrl ? '没有匹配的表情包。' : '先在上面的「图库地址」填 AstrBot 社区索引地址（例如 https://raw.githubusercontent.com/anka-afk/astrbot-meme-pack-index/main/community-index.json）。';
     return;
   }
   box.innerHTML = packs.map((p) => {
-    const cover = p.previews?.[0];
+    const cover = coverMap.get(p.id) || '';
     const job = p.job;
     const pct = job && job.total ? Math.min(100, Math.round((job.completed || 0) * 100 / job.total)) : 0;
     return `<div class="meme-pack-card" data-pack-card="${esc(p.id)}">
