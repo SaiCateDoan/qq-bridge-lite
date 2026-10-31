@@ -2,15 +2,12 @@
 
 ## 本项目
 
-qq-bridge-enhanced 是 [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge)（MIT 许可，
-Copyright (c) 2026 Derpyu520 and qq-bridge / QSH contributors）的二次开发版本，基线为上游 `v0.2.0-r3`
-（源码包 `qq-bridge-0.2.0-r3.zip`，与上游 `main` 分支一致）。
+本仓库参考并合并了以下两个上游中适合本分支的内容，**不绑定任一上游的具体版本**：
 
-- 上游的全部代码、文档与资源仍按上游 [LICENSE](LICENSE)（MIT）授权；本仓库保留上游的版权声明与 LICENSE 全文。
-- v0.3.0 新增与修改的部分同样以 MIT 许可发布。新增文件主要位于 `src/social/`、`src/admin/`、`src/lib/`、
-  `src/bridge-extensions.js`、`dsh/agent-presets/qq-agent-readonly/`、`scripts/test-continuity.mjs` 等，
-  完整变更清单见 [CHANGELOG.md](CHANGELOG.md) 与 [docs/release/RELEASE_NOTES_v0.3.0.md](docs/release/RELEASE_NOTES_v0.3.0.md)。
-- 本项目与上游作者、DeepSeek、SnowLuma 项目及腾讯公司均无隶属关系。
+- [h-D-ACE/dsh-qq](https://github.com/h-D-ACE/dsh-qq)
+- [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge)（MIT 许可，Copyright (c) 2026 Derpyu520 and qq-bridge / QSH contributors）
+
+上游的全部代码、文档与资源仍按上游 [LICENSE](LICENSE)（MIT）授权；本仓库保留上游的版权声明与 LICENSE 全文。本项目与两个上游的作者、DeepSeek、SnowLuma 项目及腾讯公司均无隶属关系。本分支新增与修改的部分同样以 MIT 许可发布，变更见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 第三方组件（不随本项目分发，适用各自许可）
 

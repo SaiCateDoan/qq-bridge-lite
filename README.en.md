@@ -1,143 +1,99 @@
-# QQ ↔ DeepSeek Harness Bridge (personal lightweight build)
+# QQ ↔ DeepSeek Harness Bridge (lightweight build)
 
-**Supported systems: Windows · macOS · Linux** (personal lightweight build, based on qq-bridge-enhanced v1.0.3)
+Turn QQ friends/groups into DeepSeek Harness conversations: agents read, reply, remember, send memes and speak.
+A **personal, long-lived lightweight branch**: only the `reserved2` (gen-2 simulation) pipeline is kept; it does not claim to match any upstream release.
 
-**English**: [README.en.md](README.en.md) | **中文**: [README.md](README.md)
+## Two upstreams
 
-> ⚠️ **Personal lightweight build.** This is the author's own trimmed fork, based on qq-bridge-enhanced v1.0.3 —
-> **not** a general-purpose distribution. Only the `reserved2` (gen-2 simulation) pipeline is kept; all other modes,
-> the owner/admin surface and the persona card were removed. Behaviour is **not** guaranteed to be
-> backward-compatible, and there is no general support. Use upstream / the original enhanced build for the full feature set.
-> `bridge.js` is down from 13,195 to ~10,730 lines; offline regression: `npm run test:audit` (53 scripts).
+This repository references and merges what fits this branch from:
 
-> **qq-bridge-enhanced v1.0.3** — a fork of [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge) v0.2.0-r3 (with the upstream r4 fixes merged in; origin and licensing in [NOTICE.md](NOTICE.md)).
-> It turns one QQ account into an "AI group member" driven by DeepSeek Harness (DSH) agents, and runs on **Windows, macOS and Linux**.
-> Most documentation is in Chinese: the step-by-step deployment guide is [docs/DSH_DEPLOYMENT.md](docs/DSH_DEPLOYMENT.md), the changelog is [CHANGELOG.md](CHANGELOG.md),
-> and the documentation index is [docs/README.md](docs/README.md).
+- [h-D-ACE/dsh-qq](https://github.com/h-D-ACE/dsh-qq)
+- [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge)
 
-QQ friends/groups become DSH conversations, and agent replies (including questions) are sent back to QQ.
+It is **not tied to a specific upstream version**. Attribution, MIT licensing and third-party boundaries are in [NOTICE.md](NOTICE.md) and [LICENSE](LICENSE).
 
-## What's in v1.0.x
+## Features
 
-| Feature | In one line | Doc (Chinese) |
-| --- | --- | --- |
-| **Windows + macOS + Linux** | Windows / Linux use SnowLuma 2.x or NapCat as the QQ backend, macOS uses NapCat; all three have a no-window way to start | [DSH_DEPLOYMENT.md](docs/DSH_DEPLOYMENT.md) |
-| **Interface platform** | `interface-platform/` (in this repo): a unified access layer between the bridge and QQ backends. Discovers accounts from the backend's folder, can serve SnowLuma and NapCat at the same time, and leaves room for WeChat / Discord / KOOK connectors later | [interface-platform/README.md](interface-platform/README.md) |
-| **Control center** | One local web page for the bridge, the interface platform and the QQ backends: start/stop buttons (QQ backends are only ever started by you), version and update checks, the NapCat login QR code shown right on the page, an overall status bar | [CONTROL_CENTER.md](docs/guides/CONTROL_CENTER.md) |
-| Cross-group identity | People are identified by QQ number only — same person, different group nicknames, still one person; same nickname, different numbers, never merged | [CONTINUITY.md](docs/guides/CONTINUITY.md) |
-| Layered person memory | Group / private / global layers; by default only "this is the same person" is shared across groups, and visibility is enforced by the program when memory is injected | same |
-| Member-join awareness | New members, known people joining another group, and returning members are recognised separately; existing members are not treated as newcomers on first deployment | same |
-| Single pipeline | Only `reserved2` (gen-2 simulation); `chat` / `reserved` (gen-1) / `closed-agent`, the approval / L1~L3 / TOTP admin surface and `qq-mode-console` were removed | this README |
-| QQ prompt | One "QQ prompt" page in the console: edit the whole behavioural prompt and restore the shipped default anytime; the persona comes from the harness global prompt (`dsh-context` promptSuffix), so GUI and QQ share the same self | this README |
-| Three meme backends | Exactly one active at a time: AstrBot local packs/remote gallery, QQ favorites, or DSH dsh-meme; only the active backend's tools are registered and the libraries never interoperate; switchable in the console | [CONFIGURATION.md](docs/guides/CONFIGURATION.md) |
-| Large images & animations | Oversized images are compressed (sharp/WebP) instead of dropped; animated images default to a 3×2 contact sheet (multi-frame optional); 8 MB / 8 images per message, 1 MB each | [CONFIGURATION.md](docs/guides/CONFIGURATION.md) |
-| Quoted merged forwards (v1.0.3) | Quoting an older merged forward no longer stalls the message for 30 s; the AI can open the quoted forward (nested ones too), results are cached | [CHANGELOG.md](CHANGELOG.md) |
-| DSH model picker | Provider / model / reasoning effort as three linked selects fed by DSH's own model catalog, applied from the next message without a restart; warns about third-party providers (chat content leaves DeepSeek), turns images into text for models that can't see images, and marks unpriced models as estimated | [CONFIGURATION.md](docs/guides/CONFIGURATION.md) |
-| DSH 0.2.1 | Works with DSH 0.2.0-rc.2 and 0.2.1; the 0.2.1 desktop app's random port is detected automatically, and the bridge follows it after DSH restarts | [DSH_020_ADAPTATION.md](docs/guides/DSH_020_ADAPTATION.md) |
+- Single `reserved2` pipeline: autonomous tool use, replies/quotes, merged forwards, poke, wait/dive, wake rules.
+- People and group memory by QQ number, layered group/private/global memory, member-join awareness, group rules, owner relay.
+- One `qq-chat-v2` behavioural prompt; persona comes from the DSH global prompt.
+- One of three meme backends: AstrBot local/remote packs (default), QQ favorites, DSH dsh-meme. Only the active backend's tools are registered.
+- Voice: library `qq_send_voice` / `qq_list_voices`; local GPT-SoVITS `qq_speak(text)`.
+- Media: large-image compression, animated frames, image/sticker understanding, merged-forward reading.
+- DSH model picker, reasoning effort, tool switches, sessions/logs/tokens/security pages.
 
-## Deployment (no-window launchers)
+## Two ports
 
-You need: Node.js ≥ 22.13; the DSH desktop app or CLI (0.2.0-rc.2 / 0.2.1) with a model account configured inside DSH; and a QQ backend that **you** install and log in to —
-**Windows**: SnowLuma (full build) or NapCat.Shell; **macOS**: QQ for Mac + the [NapCat Mac installer](https://github.com/NapNeko/NapCat-Mac-Installer/releases);
-**Linux** (x64 / arm64): SnowLuma 2.x full build (`…-linux-x64.tar.gz` / `…-linux-arm64.tar.gz`, needs the Linux QQ client on the machine) or NapCat;
-NapCat needs a WebSocket server enabled in its WebUI at `127.0.0.1:3001`. This project never downloads or installs a QQ backend.
+| Port | Purpose |
+| --- | --- |
+| **3099** | **Control center**: start/stop the bridge, bind and start SnowLuma/NapCat, interface platform, versions/logs |
+| **3100** | **Bridge console**: QQ prompt, tool switches, meme gallery, voice/TTS, sessions/security |
 
-**One-time install** (in a terminal, in the project folder):
+**Port 3100 intentionally has no SnowLuma bind/start UI. That lives in the 3099 control center.**
 
-| Step | Windows (PowerShell) | macOS / Linux (Terminal) |
-| --- | --- | --- |
-| Dependencies | `npm ci` | `npm ci` |
-| Config file | `Copy-Item config.example.json config.json` | `cp config.example.json config.json` |
-| Edit config | Fill in `ownerQQ`, `allow.groups` / `allow.private`, `dsh.provider` ([fields](docs/guides/CONFIGURATION.md)) | same |
-| Install into DSH | `node scripts\setup-dsh.mjs`, then **restart DSH** | `node scripts/setup-dsh.mjs`, then **restart DSH** |
-| No-window launcher | `control-center-hidden.vbs` is included | **macOS**: double-click `control-center.command` once - the first run creates "QQ Bridge 控制中心.app" and selects it in Finder (or run `npm run mac-app`)<br>**Linux**: `npm run linux-service -- --enable` creates and starts a systemd user service (runs in the background, starts at login) |
+Start the control center (Windows):
 
-You don't fill in `snowluma.*` (the backend address and token) by hand — "接入桥接" (link bridge) below writes it for you.
-Optional: `npm run test:audit` (offline self-check).
-
-**First start:**
-
-1. Double-click the no-window launcher (Windows: `control-center-hidden.vbs`; macOS: "QQ Bridge 控制中心.app"). The control center opens in your browser.
-   On macOS the system asks once whether "QQ Bridge 控制中心" may access data from other apps — click **Allow** (it reads NapCat's config inside QQ's container).
-   Linux: once the service is running, open `http://127.0.0.1:3099/#t=<contents of state/control-center-token>` (on a desktop, the "QQ Bridge 控制中心" launcher also works);
-   on a server, forward the port first with `ssh -L 3099:127.0.0.1:3099 <server>`.
-2. **接口平台 (Interface platform) → 概览 (Overview)**: click "开启" (turn on) on a backend card:
-   - Windows / Linux · SnowLuma: first pick the SnowLuma folder under "接入实例 → 本机 SnowLuma 程序" with "浏览…", then "开启 SnowLuma"; scan the QR code in SnowLuma's WebUI the first time;
-   - NapCat: "开启 NapCat" (on Windows / Linux, pick the launch file first in "管理 NapCat 程序 → NapCat 设置"; on Linux also pick the NapCat folder); when a scan is needed, the QR code appears right on the card.
-3. **接口平台 → 设置 (Settings)**: click "接入桥接" (link bridge).
-4. **桥接 (Bridge)** tab: click "启动桥接" (start bridge). Done when the status bar is all green (interface platform "1 账号就绪 · 桥接已接入", QQ "在线 <bot>", DSH "已就绪").
-
-**Every day:** double-click the launcher → turn on the backend → start the bridge. To quit, use "退出控制中心" at the top right of the page (it also stops the bridge,
-the interface platform and the QQ backend it started). After updating or moving the project, run `npm run mac-app` again on macOS, or `npm run linux-service -- --enable` on Linux.
-Don't start the bridge with `start.bat` / `npm start` while the control center is also running it.
-
-The full guide for a DSH agent (checks, expected output, common errors, update / backup / rollback) is **[docs/DSH_DEPLOYMENT.md](docs/DSH_DEPLOYMENT.md)**.
-
-## Architecture
-
-```
-QQ client (bot account)
-   ⇅  SnowLuma (Windows / Linux) or NapCat (macOS / Windows / Linux) — OneBot v11 WebSocket (default 3001)
-Interface platform (127.0.0.1:3120; OneBot-compatible entry /onebot/v11/ws)
-   ⇅
-qq-bridge (bridge console 127.0.0.1:3100)  ──►  DSH Web API (desktop app or `dsh web`)
-   ▲                                                   │
-   └──────── agent replies / questions ────┘
-
-Control center 127.0.0.1:3099 manages the bridge, the interface platform and the local QQ backend programs.
+```text
+control-center.bat           # windowed; closing it stops the control center and its children
+control-center-hidden.vbs    # no window
+npm run control-center
 ```
 
-- **QQ side**: `@snowluma/sdk` provides the OneBot v11 WebSocket client; through the interface platform the bridge works the same with SnowLuma or NapCat.
-- **DSH side**: session Cookie minted offline from the persistent local signing key, `/api/<namespace>/<method>` slash RPC, and `/api/remote.mux` + `session/follow`
-  event stream; verified on DSH 0.2.0-rc.2 and 0.2.1. The per-session model comes from `config.json`'s `dsh.model` (default `deepseek-flash`).
-- **Agent tools**: three bundled MCP servers expose a restricted QQ toolset (`qq_status`, `qq_get_group_history`, `qq_send_group_message`, `qq_reply`, …),
-  a read-only host probe, and a read-only `web_search` / `web_fetch` pair with SSRF protection. The AI has no tool that starts or stops a QQ backend, and no privilege-escalation tool.
-- **Bridge console** (`http://127.0.0.1:3100`, opened from the control center with the token filled in): a single **QQ prompt** page (edit / restore default),
-  sessions, whitelist/admin settings, slang library (candidates split into "to research" / "researched"), memory, stickers, and token usage & cost
-  (see [docs/guides/TOKEN_USAGE_CONSOLE.md](docs/guides/TOKEN_USAGE_CONSOLE.md)).
+macOS: double-click `control-center.command`. Linux: `npm run control-center` or the systemd service.
+Open `http://127.0.0.1:3099/`; the token is in `state/control-center-token` (auto-opened URLs include `#t=...`).
+It binds to loopback only and does **not** start SnowLuma or the bridge by itself.
 
-## Features (inherited from upstream)
+## Bind and start SnowLuma
 
-- Bridges QQ group/private messages to DSH agent sessions; whitelist/blacklist access control, fail-closed by default.
-- Social simulation mode ("simulated group member", `reserved2`) with full simulated-group-member tooling.
-- Multi-message replies through `qq_send_message` arrays; the AI decides how to split.
-- Sensitive-text audit prevents paths/credentials from being sent to QQ.
-- Slang / network-expression learning with human confirmation; lightweight memory; sticker library.
+In the control center:
 
-## Security notes
+1. **Interface platform → Overview**.
+2. Under **Instances → Local SnowLuma program**, click "Browse…" and select your SnowLuma folder (the level containing `launcher.bat` / `index.mjs`), or paste the path and click "Use this folder".
+3. Click **Start SnowLuma**; scan the QR code in SnowLuma's WebUI the first time and enable OneBot WebSocket/HTTP.
+4. **Interface platform → Settings**, click **Link bridge**.
+5. Open the **Bridge** tab and click **Start bridge**.
+6. The status bar should be green: platform "1 account ready · bridge linked", QQ "online", DSH "ready".
 
-- `config.json`, `state/` and `interface-platform/state/` are **never committed or released**; the repository only ships `config.example.json`.
-- MCP send tools enforce whitelist checks and reject CQ-code injection; the audit layer filters local paths, credentials and tokens.
-- Simulation sessions get **no local execution tools at all**: the preset's `qq-tool-restrict` row hides them at registration time and a runtime allowlist rejects anything outside the QQ MCP namespaces.
-- This lightweight build has no mode switching, no owner admin channel, no approval/TOTP and no L1~L3: the bridge always runs `reserved2`, and chat text is never auto-forwarded (the AI sends through the QQ MCP tools only).
-- The control center, bridge console and interface platform listen on loopback only and each uses its own token.
-- See [RULES.md](RULES.md) and [docs/guides/SECURITY_BASELINE.md](docs/guides/SECURITY_BASELINE.md).
+Daily routine: open control center → start backend → start bridge. Do not run `start.bat` and the control center's bridge at the same time (single instance).
 
-## Repository layout
+## Quick start
 
-```
-qq-bridge-lite/
-  config.example.json        # sanitized config template (the real config.json is never in the repo)
-  control-center-hidden.vbs  # Windows no-window launcher (control-center.bat = with a small window)
-  control-center.command     # macOS launcher in Terminal; `npm run mac-app` builds the no-window app
-  interface-platform/        # the interface platform (own package.json, tests and state/)
-  src/                       # bridge core, MCP servers, control center (src/launcher/), social modules
-  public/                    # control center and bridge console web pages
-  dsh/agent-presets/         # DSH agent preset templates; plugins/ holds the generated DSH bundles
-  scripts/                   # setup, tests and helper scripts
-  docs/                      # documentation (index: docs/README.md; folder map: docs/FOLDER_MAP.md)
-  state/                     # runtime data (not in repo)
+Requires Node.js ≥ 22.13, a working DSH, and a QQ backend you install and log in to (SnowLuma or NapCat). This project does not download or install QQ backends.
+
+```powershell
+npm ci
+Copy-Item config.example.json config.json
+# edit config.json: ownerQQ, allow.groups / allow.private, dsh.provider, ...
+node scripts/setup-dsh.mjs
+# restart DSH
 ```
 
-The standalone **voice sender tool** lives outside this repository (sibling folder `../voice-tool/`); its tests are skipped when it is absent.
+Then use the control center as described above.
 
-## Testing
+- Configuration: [docs/guides/CONFIGURATION.md](docs/guides/CONFIGURATION.md)
+- Control center: [docs/guides/CONTROL_CENTER.md](docs/guides/CONTROL_CENTER.md)
+- DSH deployment: [docs/DSH_DEPLOYMENT.md](docs/DSH_DEPLOYMENT.md)
+- Docs index: [docs/README.md](docs/README.md)
+- Folder map: [docs/FOLDER_MAP.md](docs/FOLDER_MAP.md)
 
-`npm run test:audit` runs the offline regression suite (no credentials, DSH, QQ or network): 60 scripts. On macOS and Linux, `test-console-encoding.mjs` fails by design
-(it checks the Windows console's `chcp`), so expect 59/60 there. The interface platform has its own suite: `cd interface-platform && npm test`.
-Test list and conventions: [docs/guides/TESTING.md](docs/guides/TESTING.md). `npm run self-test` runs a DSH-side link test (needs DSH, no QQ).
+## Voice
 
-## Compliance
+**AI voice is disabled by default** (`socialV2.voice.enabled` and `tools.sendVoice` default to `false`): put audio into `audio/`, then enable it in the console.
+The standalone tool lives in `../voice-tool/`: `node voice-cli.mjs` / `node voice-gui.mjs`.
 
-SnowLuma and NapCat are independent third-party projects, not affiliated with Tencent/QQ, and are not distributed with this project. This project is for learning and
-technical research only; please follow the relevant terms and the QQ User Agreement.
+Local GPT-SoVITS is configured under "Gen-2 simulation → Local TTS"; the AI uses `qq_speak` to synthesise and send a voice message. It is separate from the audio library. See [docs/guides/VOICE.md](docs/guides/VOICE.md).
+
+## Tests
+
+```powershell
+npm run test:audit
+```
+
+Offline regression currently has **58 scripts**. `test-platform` can time out occasionally; rerun it alone.
+
+## Safety and boundaries
+
+- Only send QQ content to the model provider you configured; never commit `state/`, tokens or SnowLuma data.
+- Group content is untrusted input; tools remain constrained by allowlists, session tokens, rate limits and auditing.
+- SnowLuma is a third-party unofficial QQ protocol implementation; use it at your own risk. This project does not bundle, download or start it.
+- See [RULES.md](RULES.md) for permission boundaries and [NOTICE.md](NOTICE.md) for attribution and third-party licences.
