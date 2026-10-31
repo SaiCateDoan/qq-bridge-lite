@@ -38,11 +38,13 @@
 
 ## `socialV2.tools` 新增开关（默认都是 `true`）
 
+AI 可见工具已收敛为 22 个；旧发送/管理动作不再注册（后端接口保留给控制台/兼容调用）。
+
 | 开关 | 工具 | 说明 |
 | --- | --- | --- |
 | `personProfile` | `qq_get_person` / `qq_note_person` | 按 QQ 号查看/记录人物（按可见范围过滤；只能写当前会话作用域） |
 | `requestMode` | `qq_request_mode_change` | 只在 owner 私聊会话里登记申请；不能执行、不能确认 |
-| `crossGroup` | `qq_cross_group_query` | 还需要 `crossGroup.enabled` 与链接授权 |
+| `crossGroup` | 管理端跨群查询 | AI 工具已移除；界面/接口仍保留给管理端 |
 
 ## 管理员私聊托付群会话（v0.4.2，默认关闭）
 
@@ -90,7 +92,7 @@ AI **收藏**群友的表情、**发送**收藏表情时，桥接会先自己下
 
 | 值 | 链路 | 工具 |
 | --- | --- | --- |
-| `astrbot`（默认） | 本地 AstrBot 图库 + 远程表情包 | `qq_search_memes` / `qq_search_meme_packs` / `qq_download_meme_pack` / `qq_collect_meme` / `qq_send_meme` / `qq_get_meme_image` |
+| `astrbot`（默认） | 本地 AstrBot 图库 + 远程表情包 | `qq_search_memes` / `qq_collect_meme` / `qq_send_meme` / `qq_get_meme_image`（远程包管理在控制台） |
 | `qq` | QQ 收藏表情 | `qq_list_stickers` / `qq_get_sticker_image` / `qq_send_sticker` / `qq_collect_sticker` / `qq_sticker_note` / `qq_set_sticker_remark` |
 | `dshmeme` | DSH dsh-meme 图库 | `qq_dshmeme_search` / `qq_dshmeme_send` / `qq_dshmeme_learn` |
 

@@ -73,7 +73,7 @@ test('social autonomy and visual, forwarding, dsh-meme and web capabilities rema
     '【别像客服，也别像在写报告】', '【学习群友策略】',
     '【不要当群管家/主持人】', '普通对话默认 1 条，最多 2 条', '不要用空格断句',
     '不会自动发送到 QQ', 'qq_get_message_images', 'qq_get_forward_msg', 'nestedForwardIds',
-    'qq_send_poke', 'QQ 收藏 / AstrBot / dsh-meme', '三选一', '当前链路的工具', '三套图库不互通', 'qq_get_self_image',
+    'qq_send_poke', 'QQ 收藏 / AstrBot / dsh-meme', '三选一', '当前链路的工具', '三套图库不互通',
     'qq_speak', 'qq_send_voice', 'qq_list_voices', 'verified=true 才代表这条语音确实落地', '语音**默认是关闭的**', '不要假装发了语音',
     'mcp__web-search-safe__web_search', 'mcp__web-search-safe__web_fetch',
   ]) assert.ok(prefix.includes(text), `missing capability or voice rule: ${text}`);
@@ -87,9 +87,9 @@ test('autonomy limits and the observation escape hatch stay described', () => {
     // [SILENT] 是桥接的退出标记，误用会静默吞掉回复。
     '不要用 [SILENT]',
     // 记忆面
-    '【记忆卫生】', 'qq_memory_append', 'qq_memory_query', 'qq_memory_remove', 'qq_memory_clear',
+    '【记忆卫生】', 'qq_memory_append', 'qq_memory_query',
     // 黑话面
-    'qq_slang_query', 'qq_slang_submit', '不重复提交',
+    'qq_slang_query', '管理员会在控制台维护',
     // 频率上限
     '普通闲聊约 3~5 轮一张', '别刷屏', '一条消息只能一张，不能附带文字', '不要频繁拍',
     // 会话令牌是硬前置，漏传会被拒绝。

@@ -156,8 +156,8 @@ test('默认 backend=astrbot：唤醒提示只出现 AstrBot 工具', async () =
   try {
     h.cfg.socialV2.memes.remoteUrl = 'https://example.invalid/memes.json';
     const text = h.buildWakePromptV2('group:456', 'test');
-    assert.match(text, /qq_search_meme_packs/);
     assert.match(text, /qq_collect_meme/);
+    assert.doesNotMatch(text, /qq_search_meme_packs|qq_download_meme_pack/);
     assert.doesNotMatch(text, /qq_dshmeme_search/);
     assert.doesNotMatch(text, /qq_list_stickers/);
   } finally { await h.close(); }

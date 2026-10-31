@@ -170,7 +170,7 @@ test('object-shaped bridge errors are rendered readably, not as [object Object]'
     { ok: false, error: { code: 'send/rejected', message: '消息含敏感信息，已阻止发送' } },
     { status: 200 },
   ));
-  const result = await callTool('qq_send_group_message', { groupId: '456', message: 'fixture' });
+  const result = await callTool('qq_send_message', { key: 'group:456', messages: 'fixture', token: 'fixture-token' });
   assert.equal(result.isError, true);
   const text = String(result.content[0].text);
   assert.ok(!/\[object Object\]/.test(text), `错误文本不得是不可读的对象：${text}`);
@@ -185,7 +185,7 @@ test('a bridge 200 with ok:false is reported to the model as a failure', async (
     { ok: false, error: '消息含敏感信息，已阻止发送' },
     { status: 200 },
   ));
-  const result = await callTool('qq_send_group_message', { groupId: '456', message: 'fixture' });
+  const result = await callTool('qq_send_message', { key: 'group:456', messages: 'fixture', token: 'fixture-token' });
   assert.equal(result.isError, true, 'ok:false 必须作为工具错误返回');
   assert.match(result.content[0].text, /阻止发送/);
 });
@@ -199,19 +199,9 @@ test('legacy closed-agent read tools are not registered', async () => {
   }
 });
 
-test('group members tool uses the v2 endpoint and never reveals the group allowlist', async () => {
-  const calls = [];
-  const callTool = loadSnowlumaTools(async (url) => {
-    calls.push(String(url));
-    if (String(url).includes('/api/socialV2/group-members')) {
-      return Response.json({ ok: true, key: 'group:999999', members: [{ userId: '123', nickname: 'fixture' }] });
-    }
-    assert.fail(`unexpected endpoint: ${url}`);
-  });
-  const result = await callTool('qq_get_group_members', { key: 'group:999999', token: 'fixture-token' });
-  assert.notEqual(result.isError, true);
-  assert.equal(calls.length, 1, '只应请求群成员端点');
-  assert.match(calls[0], /\/api\/socialV2\/group-members\?key=group%3A999999/);
-  assert.match(result.content[0].text, /"userId":"123"/);
-  assert.doesNotMatch(result.content[0].text, /111111|222222/);
+test('admin and legacy tools are not registered for the model', async () => {
+  const callTool = loadSnowlumaTools(async () => Response.json({}));
+  for (const name of ['qq_get_group_members', 'qq_status', 'qq_social_state', 'qq_search_meme_packs', 'qq_download_meme_pack', 'qq_get_self_image', 'qq_reply', 'qq_send_group_message', 'qq_send_private_message', 'qq_send_burst', 'qq_get_my_recent_messages', 'qq_report_feedback', 'qq_memory_clear', 'qq_memory_remove', 'qq_slang_submit', 'qq_cross_group_query']) {
+    await assert.rejects(callTool(name, {}), /should be registered/, `${name} 不应再注册`);
+  }
 });

@@ -267,6 +267,33 @@ async function authorizeRead(key) {
 //
 const server = new McpServer({ name: 'snowluma-safe', version: '1.0.3' });
 
+// ── AI 可见工具白名单：管理动作和重复的旧发送工具不再注册 ─────────────────
+// 后端接口仍保留给控制台/兼容调用；这里只影响模型能看到和调用的工具。
+const REMOVED_AI_TOOLS = new Set([
+  'qq_send_group_message',
+  'qq_send_private_message',
+  'qq_send_burst',
+  'qq_reply',
+  'qq_social_state',
+  'qq_get_my_recent_messages',
+  'qq_status',
+  'qq_report_feedback',
+  'qq_search_meme_packs',
+  'qq_download_meme_pack',
+  'qq_memory_clear',
+  'qq_slang_submit',
+  'qq_get_self_image',
+  'qq_cross_group_query',
+  'qq_get_group_members',
+  'qq_memory_remove'
+]);
+const registerMcpTool = server.tool.bind(server);
+server.tool = (...args) => {
+  const name = String(args[0] ?? '');
+  if (REMOVED_AI_TOOLS.has(name)) return undefined;
+  return registerMcpTool(...args);
+};
+
 // ── 工具开关必须在**注册期**生效，而不是只在校验期 ──────────────────────────
 //
 // 为什么：每个工具的描述 + 参数 schema 都会随 system prompt 在**每一次**请求里重发
@@ -276,7 +303,7 @@ const server = new McpServer({ name: 'snowluma-safe', version: '1.0.3' });
 // 这里用一个注册过滤器统一处理：开关关闭 ⇒ 该工具根本不注册 ⇒ 既省 token 又不给模型误调的机会。
 // DSH 在启动时读取工具清单，所以关掉/打开后需要重启 DSH 才会刷新（控制台面板已注明）。
 //
-// 只列**各模式共用的工具不在其中**：qq_send_group_message / qq_send_private_message / qq_reply
+// 只列**各模式共用的工具不在其中**：qq_send_group_message / qq_send_private_message / qq_send_message
 // 同时服务 chat / reserved / closed-agent 模式，用 v2 的开关去决定它们是否注册会误伤其它模式，
 // 所以这三个仍然只在调用时由桥接校验。
 const TOOL_CONFIG_FLAGS = {
@@ -564,7 +591,7 @@ server.tool(
       triggers: z.object({
         atMention: z.boolean().optional().describe('被 @ 或引用自己时唤醒'),
         nameMention: z.boolean().optional().describe('被叫名字/昵称时唤醒'),
-        speakerIds: z.array(z.union([z.number(), z.string()])).max(20).optional().describe('指定群友 QQ 号数组：这些群友中任意一位发言时唤醒（可选，最多 20 个，不设置则不启用；私聊不适用，设置会被桥接清除；可从 qq_get_active_members / qq_get_group_members / qq_get_message_detail 的 userId/user_id 获取）'),
+        speakerIds: z.array(z.union([z.number(), z.string()])).max(20).optional().describe('指定群友 QQ 号数组：这些群友中任意一位发言时唤醒（可选，最多 20 个，不设置则不启用；私聊不适用，设置会被桥接清除；可从 qq_get_active_members / qq_get_message_detail 的 userId/user_id 获取）'),
         keywords: z.array(z.string()).optional().describe('出现任意关键词时唤醒'),
         question: z.boolean().optional().describe('被直接提问/点名挑战时唤醒'),
         poke: z.boolean().optional().describe('有人拍一拍时唤醒（群聊包括拍你和拍别人，私聊为对方拍你）'),
@@ -586,7 +613,7 @@ server.tool(
 
 server.tool(
   'qq_send_burst',
-  '在指定 QQ 群分多条发送消息（二代仿真模式专用），桥接会按真人化随机间隔发送。暂不支持引用，需要引用请用 qq_reply。注意：数组里的每个字符串就是一条 QQ 消息，字符串内部不要用空格分隔中文短句，需要多条请用数组元素；每条消息要读起来完整，不要把同一句话拆到两条里。',
+  '在指定 QQ 群分多条发送消息（二代仿真模式专用），桥接会按真人化随机间隔发送。暂不支持引用，需要引用请用 qq_send_message。注意：数组里的每个字符串就是一条 QQ 消息，字符串内部不要用空格分隔中文短句，需要多条请用数组元素；每条消息要读起来完整，不要把同一句话拆到两条里。',
   {
     groupId: z.union([z.number(), z.string()]).describe('群号（必须在白名单内）'),
     token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
@@ -1043,7 +1070,7 @@ if (cfg.socialV2?.memeBackend === 'qq' && cfg.socialV2?.sticker?.enabled !== fal
 if (cfg.socialV2?.memeBackend === 'qq' && cfg.socialV2?.sticker?.enabled !== false && cfg.socialV2?.tools?.sendSticker !== false) {
   server.tool(
     'qq_send_sticker',
-    '在指定会话发送一个 QQ 收藏表情包（自定义表情）。stickerId 用 qq_list_stickers 返回的 id / md5 / url。注意：一条消息只能是一张表情，不能在同一气泡里附带文字；想说的话请先用 qq_send_message / qq_reply 作为单独气泡发送，再单独发这张表情。需要引用/点名时可用 replyToMessageId / atUserId（群聊）。真人偶尔用表情包很自然，但别刷屏。',
+    '在指定会话发送一个 QQ 收藏表情包（自定义表情）。stickerId 用 qq_list_stickers 返回的 id / md5 / url。注意：一条消息只能是一张表情，不能在同一气泡里附带文字；想说的话请先用 qq_send_message（引用用 replyToMessageId） 作为单独气泡发送，再单独发这张表情。需要引用/点名时可用 replyToMessageId / atUserId（群聊）。真人偶尔用表情包很自然，但别刷屏。',
     {
       key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
       token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
@@ -1204,7 +1231,7 @@ if ((cfg.socialV2?.memeBackend || 'astrbot') === 'astrbot' && cfg.socialV2?.meme
 if ((cfg.socialV2?.memeBackend || 'astrbot') === 'astrbot' && cfg.socialV2?.memes?.enabled !== false && cfg.socialV2?.tools?.memesSend !== false) {
   server.tool(
     'qq_send_meme',
-    '从本地表情图库发一张表情。memeId 用 qq_search_memes 返回的编号（如 "#01"）或 sha256。一条消息只能是一张表情，不能在同一气泡里附带文字；想说的话先用 qq_send_message / qq_reply 单独发。需要引用/点名时可用 replyToMessageId / atUserId。',
+    '从本地表情图库发一张表情。memeId 用 qq_search_memes 返回的编号（如 "#01"）或 sha256。一条消息只能是一张表情，不能在同一气泡里附带文字；想说的话先用 qq_send_message（引用用 replyToMessageId） 单独发。需要引用/点名时可用 replyToMessageId / atUserId。',
     {
       key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
       token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
@@ -1284,7 +1311,7 @@ if (cfg.socialV2?.memeBackend === 'dshmeme' && cfg.socialV2?.dshMeme?.enabled !=
 if (cfg.socialV2?.memeBackend === 'dshmeme' && cfg.socialV2?.dshMeme?.enabled !== false && cfg.socialV2?.tools?.dshMemeSend !== false) {
   server.tool(
     'qq_dshmeme_send',
-    '从 dsh-meme 图库发一张图到当前 QQ 会话。memeId 用 qq_dshmeme_search 返回的 id。一条消息只能一张，不能在同一气泡附带文字；想说的话先用 qq_send_message/qq_reply 单独发。可传 replyToMessageId / atUserId（群聊）。',
+    '从 dsh-meme 图库发一张图到当前 QQ 会话。memeId 用 qq_dshmeme_search 返回的 id。一条消息只能一张，不能在同一气泡附带文字；想说的话先用 qq_send_message（引用用 replyToMessageId） 单独发。可传 replyToMessageId / atUserId（群聊）。',
     {
       key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
       token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
@@ -1338,7 +1365,7 @@ if (cfg.socialV2?.memeBackend === 'dshmeme' && cfg.socialV2?.dshMeme?.enabled !=
 if (cfg.socialV2?.tts?.enabled === true && cfg.socialV2?.tools?.ttsSpeak !== false) {
   server.tool(
     'qq_speak',
-    '用本地 GPT-SoVITS 把文字合成成 QQ 语音条，并发送到当前会话。语音条只能有一张语音，不能附带文字；想同时说话和发文字时，先用 qq_send_message / qq_reply 发文字，再单独调用 qq_speak，或只发语音。短句优先，语音生成需要时间；普通闲聊偶尔用，不要每条都发、不要连续刷语音。不要用 qq_send_voice（那是语音库里的旧音频）。返回 verified=true 表示已回读确认 record 段落地。',
+    '用本地 GPT-SoVITS 把文字合成成 QQ 语音条，并发送到当前会话。语音条只能有一张语音，不能附带文字；想同时说话和发文字时，先用 qq_send_message（引用用 replyToMessageId） 发文字，再单独调用 qq_speak，或只发语音。短句优先，语音生成需要时间；普通闲聊偶尔用，不要每条都发、不要连续刷语音。不要用 qq_send_voice（那是语音库里的旧音频）。返回 verified=true 表示已回读确认 record 段落地。',
     {
       key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
       token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),

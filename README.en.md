@@ -45,6 +45,7 @@ These are written or rewritten in this branch. The list describes behaviour, not
 
 ### Docs and operations
 
+- Reduced the AI tool surface from 38 to 22; merged legacy send tools into `qq_send_message` and moved meme-pack/admin actions back to the console.
 - Reorganised README, configuration notes and SnowLuma troubleshooting; clarified the 3099 control center vs 3100 bridge console.
 - Documented the case where SnowLuma only exposes WebUI (no 3000/3001): QQ process injection/auto-load needs attention.
 

@@ -1928,33 +1928,22 @@ button:active:not(:disabled) {
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="getPrompt"> <span><b>qq_get_prompt</b><span class="meta">查看角色卡、推荐值、可用工具、当前唤醒配置</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="getUnread"> <span><b>qq_get_unread_messages</b><span class="meta">查看未读消息，不自动标记已读</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="getRecent"> <span><b>qq_get_recent_messages</b><span class="meta">查看最近消息，支持 offset 扩大范围</span></span></label>
-        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="socialState"> <span><b>qq_social_state</b><span class="meta">查看当前 WakeConfig、未读数、上次唤醒原因等</span></span></label>
-        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="sendGroup"> <span><b>qq_send_group_message</b><span class="meta">向指定群发送一条纯文本消息</span></span></label>
-        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="sendPrivate"> <span><b>qq_send_private_message</b><span class="meta">向指定好友发送一条纯文本消息</span></span></label>
-        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="reply"> <span><b>qq_reply</b><span class="meta">引用/回复某条群消息并发送文本</span></span></label>
-        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="sendBurst"> <span><b>qq_send_burst</b><span class="meta">按数组分多条发送，桥接自动加真人化间隔</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="sendMessage"> <span><b>qq_send_message</b><span class="meta">统一发送：一条/多条/引用/自定义或按字数计算间隔</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="sendPoke"> <span><b>qq_send_poke</b><span class="meta">发送 QQ 拍一拍（群聊传 targetUserId，私聊可省）</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="waitMessages"> <span><b>qq_wait_for_messages</b><span class="meta">短暂等待新消息，有新消息立即返回或超时返回</span></span></label>
-        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="feedback"> <span><b>qq_report_feedback</b><span class="meta">向控制台反馈 AI 遇到的问题/困惑</span></span></label>
-        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="getMyRecent"> <span><b>qq_get_my_recent_messages</b><span class="meta">查看自己最近发过的消息，避免重复</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="getMessageDetail"> <span><b>qq_get_message_detail</b><span class="meta">按 message_id 查看单条消息完整内容</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="getImages"> <span><b>qq_get_message_images</b><span class="meta">查看消息中的图片/表情内容</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="getForwardMsg"> <span><b>qq_get_forward_msg</b><span class="meta">查看当前会话收到的合并转发消息内容</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="getActiveMembers"> <span><b>qq_get_active_members</b><span class="meta">查看最近活跃成员列表</span></span></label>
-        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="getGroupMembers"> <span><b>qq_get_group_members</b><span class="meta">按群号查成员（QQ 号、昵称、群名片）</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="setWakeConfig"> <span><b>qq_set_wake_config</b><span class="meta">设置唤醒/潜水条件：无限期、有限时间、@/名字/关键词/概率等</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="markRead"> <span><b>qq_mark_read</b><span class="meta">标记当前未读为已读（看过但决定不回复）</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="memory"> <span><b>qq_memory_append / qq_memory_query</b><span class="meta">轻量记忆：话题/想说的话/群友印象</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="slangQuery"> <span><b>qq_slang_query</b><span class="meta">查询已确认黑话/梗/网络表达</span></span></label>
-        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="slangSubmit"> <span><b>qq_slang_submit</b><span class="meta">AI 提交陌生词/黑话给管理员筛选</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-meme-backend="qq" data-v2-tool="listStickers"> <span><b>qq_list_stickers</b><span class="meta">查看/搜索 QQ 收藏表情（含备注和本地笔记）</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-meme-backend="qq" data-v2-tool="getStickerImage"> <span><b>qq_get_sticker_image</b><span class="meta">看图理解没有备注的收藏表情</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-meme-backend="qq" data-v2-tool="sendSticker"> <span><b>qq_send_sticker</b><span class="meta">发送收藏表情（一条消息只能一张，不能带文字）</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-meme-backend="qq" data-v2-tool="collectSticker"> <span><b>qq_collect_sticker</b><span class="meta">AI 偶尔收藏别人发的表情并写简短备注</span></span></label>
         <label class="v2-tool-item" data-meme-backend="astrbot"><input type="checkbox" data-v2-tool="memesSearch"> <span><b>qq_search_memes</b><span class="meta">搜 AstrBot 本地图库/扁平远程</span></span></label>
-        <label class="v2-tool-item" data-meme-backend="astrbot"><input type="checkbox" data-v2-tool="memesPacks"> <span><b>qq_search_meme_packs</b><span class="meta">搜 AstrBot 远程表情包</span></span></label>
-        <label class="v2-tool-item" data-meme-backend="astrbot"><input type="checkbox" data-v2-tool="memesPackDownload"> <span><b>qq_download_meme_pack</b><span class="meta">后台下载远程表情包</span></span></label>
         <label class="v2-tool-item" data-meme-backend="astrbot"><input type="checkbox" data-v2-tool="memesCollect"> <span><b>qq_collect_meme</b><span class="meta">从聊天收图进 AstrBot 图库</span></span></label>
         <label class="v2-tool-item" data-meme-backend="astrbot"><input type="checkbox" data-v2-tool="memesSend"> <span><b>qq_send_meme</b><span class="meta">发 AstrBot 图库图片</span></span></label>
         <label class="v2-tool-item" data-meme-backend="astrbot"><input type="checkbox" data-v2-tool="memesImage"> <span><b>qq_get_meme_image</b><span class="meta">查看 AstrBot 图库图片</span></span></label>
@@ -1963,15 +1952,13 @@ button:active:not(:disabled) {
         <label class="v2-tool-item"><input type="checkbox" data-meme-backend="dshmeme" data-v2-tool="dshMemeLearn"> <span><b>qq_dshmeme_learn</b><span class="meta">把聊天图片收进 dsh-meme 图库</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="personProfile"> <span><b>qq_get_person / qq_note_person</b><span class="meta">按 QQ 号查看/记录人物档案（按共享策略过滤可见范围）</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="requestMode"> <span><b>qq_request_mode_change</b><span class="meta">只在管理员私聊里登记模式切换申请；不能执行、不能确认</span></span></label>
-        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="crossGroup"> <span><b>qq_cross_group_query</b><span class="meta">跨群受控查询（还需 crossGroup.enabled 与链接授权）</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="ownerGroupAccess"> <span><b>qq_owner_peek_group / qq_owner_group_rule</b><span class="meta">管理员私聊里只读查看白名单群的消息和记忆，并给群设定长期规则（由桥接写进群会话记忆、每次唤醒注入；默认关闭，改动后需重启 DSH）</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="ownerRelay"> <span><b>qq_ask_group_session</b><span class="meta">管理员私聊里托付某个白名单群的会话去群里说话（默认关闭；由群会话自己组织语言发言，改动后需重启 DSH）</span></span></label>
-        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="getSelfImage"> <span><b>qq_get_self_image</b><span class="meta">查看自己的默认 Q 版形象图片</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-meme-backend="qq" data-v2-tool="stickerNote"> <span><b>qq_sticker_note</b><span class="meta">给表情记录本地含义/标签/用法</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-meme-backend="qq" data-v2-tool="setStickerRemark"> <span><b>qq_set_sticker_remark</b><span class="meta">修改 QQ 官方表情备注（默认禁用，慎用）</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="sendVoice"> <span><b>qq_send_voice / qq_list_voices</b><span class="meta">发送语音条（只能发语音库里的音频；偶然而为的强表达）</span></span></label>
       </div>
-      <div class="meta" style="margin-top:6px">二代黑话学习：AI 可用 <code>qq_slang_submit</code> 提交陌生词，也可由桥接自动提取；管理员在「黑话词库」页面筛选确认后，词条会自动写入黑话提示词并注入 <code>qq_get_prompt</code> 与后续唤醒。</div>
+      <div class="meta" style="margin-top:6px">二代黑话学习：AI 只用 <code>qq_slang_query</code> 查询已确认词条；陌生词由桥接自动提取，管理员在「黑话词库」页面筛选确认后写入黑话提示词并注入 <code>qq_get_prompt</code> 与后续唤醒。</div>
 
       </div></details>
 <details class="settings-group"><summary>语音库与语音发送（调试）</summary><div class="settings-content">
@@ -2044,7 +2031,7 @@ button:active:not(:disabled) {
 
       </div></details>
 <details class="settings-group"><summary>发送限制</summary><div class="settings-content">
-      <div class="meta" style="margin-bottom:8px">二代不再按空格自动拆条；AI 要分多条必须显式传数组或用 qq_send_burst。</div>
+      <div class="meta" style="margin-bottom:8px">二代不再按空格自动拆条；AI 要分多条必须给 qq_send_message 显式传数组。</div>
       <div class="row">
         <label style="flex:1">允许多条发送</label><input type="checkbox" id="v2BurstEnabled" style="width:auto">
         <label style="flex:1">单次最多条数</label><input type="number" id="v2BurstMax" min="1" style="width:70px">
@@ -2272,7 +2259,7 @@ button:active:not(:disabled) {
     </section>
 <section id="section-slang" data-page="slang" class="card span-all">
       <h2>群聊黑话 / 网络用语库</h2>
-      <div class="meta">DSH 会从群聊中自动提取疑似黑话候选；二代仿真模式下 AI 也可用 <code>qq_slang_submit</code> 主动提交陌生词。候选可批量送 DSH 深度联网研究，研究结果回到控制台由你删改修正后转正；确认后的词条会写入“黑话提示词”，注入一代/二代 AI 的聊天上下文，成为 AI 可查询和使用的记忆。</div>
+      <div class="meta">DSH 会从群聊中自动提取疑似黑话候选；AI 只用 <code>qq_slang_query</code> 查询，不再主动提交。候选可批量送 DSH 深度联网研究，研究结果回到控制台由你删改修正后转正；确认后的词条会写入“黑话提示词”，注入一代/二代 AI 的聊天上下文，成为 AI 可查询和使用的记忆。</div>
 
       <div class="slang-tabs">
         <button class="slang-tab active" data-slang-tab="candidate" title="还没有含义 / 用法 / 示例的候选">候选词-待研究 <span class="meta" id="slangCountPending"></span></button>
@@ -2392,17 +2379,30 @@ button:active:not(:disabled) {
       <div class="meta">由 qq-bridge 的 MCP server 提供给 DSH agent；修改后需重启 DSH 才会刷新工具 schema。</div>
       <table>
         <tr><th>工具</th><th>说明</th></tr>
-        <tr><td>qq_status</td><td>登录状态（只读）</td></tr>
-        <tr><td>qq_list_groups</td><td>群列表（只返回白名单群）</td></tr>
-        <tr><td>qq_get_group_members</td><td>群成员（只读，群号必须白名单）</td></tr>
-        <tr><td>qq_get_group_history</td><td>群历史（只读，含 message_id，可作引用目标）</td></tr>
-        <tr><td>qq_send_group_message</td><td>发群消息；可选 <code>replyToMessageId</code> 引用/回复</td></tr>
-        <tr><td>qq_reply</td><td>专用“引用/回复”：在群里引用某条消息并发送文本</td></tr>
-        <tr><td>qq_send_private_message</td><td>发私聊；可选 <code>replyToMessageId</code> 引用/回复</td></tr>
-        <tr><td>qq_slang_query</td><td>查询已确认黑话/梗/网络表达（只读）</td></tr>
-        <tr><td>qq_slang_submit</td><td>AI 提交陌生词/黑话给管理员筛选</td></tr>
+        <tr><td>qq_get_prompt</td><td>提示词、状态、推荐值、当前可用工具</td></tr>
+        <tr><td>qq_get_unread_messages</td><td>读未读，支持 afterSeq 补读</td></tr>
+        <tr><td>qq_get_recent_messages</td><td>读最近消息</td></tr>
+        <tr><td>qq_get_message_detail</td><td>按 messageId 查单条</td></tr>
+        <tr><td>qq_get_forward_msg</td><td>打开合并转发</td></tr>
+        <tr><td>qq_get_message_images</td><td>看图片/表情（视觉）</td></tr>
+        <tr><td>qq_send_message</td><td>统一发送：一条/多条、引用、@、间隔</td></tr>
+        <tr><td>qq_send_poke</td><td>拍一拍</td></tr>
+        <tr><td>qq_speak</td><td>GPT-SoVITS 语音条</td></tr>
+        <tr><td>qq_wait_for_messages</td><td>等待/回复前静默/沉睡前观察</td></tr>
+        <tr><td>qq_set_wake_config</td><td>设置唤醒/潜水条件</td></tr>
+        <tr><td>qq_mark_read</td><td>标记已读水位</td></tr>
+        <tr><td>qq_search_memes</td><td>搜本地/扁平远程表情</td></tr>
+        <tr><td>qq_get_meme_image</td><td>查看表情候选图</td></tr>
+        <tr><td>qq_send_meme</td><td>发一张表情</td></tr>
+        <tr><td>qq_collect_meme</td><td>收藏聊天图片进图库</td></tr>
+        <tr><td>qq_get_active_members</td><td>最近活跃成员</td></tr>
+        <tr><td>qq_get_person</td><td>按 QQ 号看人物档案</td></tr>
+        <tr><td>qq_note_person</td><td>记一条人物印象</td></tr>
+        <tr><td>qq_memory_append</td><td>记录话题/想说的话/印象</td></tr>
+        <tr><td>qq_memory_query</td><td>查轻量记忆</td></tr>
+        <tr><td>qq_slang_query</td><td>查已确认黑话/梗</td></tr>
       </table>
-      <div class="meta" style="margin-top:10px">二代仿真模式工具：qq_get_prompt / qq_get_unread_messages / qq_get_recent_messages / qq_social_state / qq_send_burst / qq_send_message / qq_wait_for_messages / qq_set_wake_config / qq_mark_read / qq_memory_* / qq_slang_query / qq_slang_submit 等。</div>
+      <div class="meta" style="margin-top:10px">二代仿真模式工具：共 22 个：读消息/看图/发送/语音/表情/唤醒/记忆/黑话。旧发送工具与远程表情包管理动作已移除。</div>
     </section>
 <section id="section-whitelist" data-page="access" class="card span-all">
       <h2>白名单 / 管理员</h2>
@@ -3339,7 +3339,7 @@ function summarizeToolArgs(tool, args) {
     if (obj.id != null && obj.id !== '') push('id', String(obj.id).slice(0, 40));
   } else if (t.includes('qq_mark_read')) {
     push('key', obj.key);
-  } else if (t.includes('qq_get_prompt') || t.includes('qq_get_unread_messages') || t.includes('qq_get_recent_messages') || t.includes('qq_social_state') || t.includes('qq_get_my_recent_messages') || t.includes('qq_get_message_detail') || t.includes('qq_get_active_members')) {
+  } else if (t.includes('qq_get_prompt') || t.includes('qq_get_unread_messages') || t.includes('qq_get_recent_messages') || t.includes('qq_get_message_detail') || t.includes('qq_get_active_members')) {
     push('key', obj.key);
     if (obj.messageId != null) push('messageId', obj.messageId);
     if (obj.limit != null) push('limit', obj.limit);
