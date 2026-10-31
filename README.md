@@ -66,7 +66,7 @@
 
 | 端口 | 用途 |
 | --- | --- |
-| **3099** | **控制中心**：启动/停止桥接、绑定并启动 SnowLuma/NapCat、接口平台、版本与日志 |
+| **3099** | **控制中心**：启动/停止桥接、绑定并启动 SnowLuma/NapCat、启动/配置本地 TTS、接口平台、版本与日志 |
 | **3100** | **桥接控制台**：QQ 提示词、工具开关、表情图库、语音/TTS、会话与安全等桥接内部设置 |
 
 **3100 没有“绑定/启动 SnowLuma”的入口是正常的，那个入口在 3099 的控制中心。**
@@ -123,7 +123,7 @@ node scripts/setup-dsh.mjs
 **AI 发语音默认关闭**（`socialV2.voice.enabled` 与 `tools.sendVoice` 默认 `false`）：先把音频放进 `audio/`，再到控制台打开开关。
 独立发语音工具在仓库上一级 `../voice-tool/`：`node voice-cli.mjs` / `node voice-gui.mjs`，也可以双击工作区的「发语音-图形界面.cmd」。
 
-本地 GPT-SoVITS 则在控制台「二代仿真 → 本地 TTS（GPT-SoVITS）」配置；AI 用 `qq_speak` 合成并发送语音条，和语音库是两套。详细说明见 [docs/guides/VOICE.md](docs/guides/VOICE.md)。
+本地 GPT-SoVITS 在控制中心 **3099 → 桥接 → 本地 TTS（GPT-SoVITS）** 配置并启停；AI 用 `qq_speak` 合成并发送语音条，和语音库是两套。详细说明见 [docs/guides/VOICE.md](docs/guides/VOICE.md)。
 
 ## 测试
 

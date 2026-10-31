@@ -1969,7 +1969,6 @@ button:active:not(:disabled) {
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="getSelfImage"> <span><b>qq_get_self_image</b><span class="meta">查看自己的默认 Q 版形象图片</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-meme-backend="qq" data-v2-tool="stickerNote"> <span><b>qq_sticker_note</b><span class="meta">给表情记录本地含义/标签/用法</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-meme-backend="qq" data-v2-tool="setStickerRemark"> <span><b>qq_set_sticker_remark</b><span class="meta">修改 QQ 官方表情备注（默认禁用，慎用）</span></span></label>
-        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="ttsSpeak"> <span><b>qq_speak</b><span class="meta">用本地 GPT-SoVITS 合成并发送语音条（不是语音库）</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="sendVoice"> <span><b>qq_send_voice / qq_list_voices</b><span class="meta">发送语音条（只能发语音库里的音频；偶然而为的强表达）</span></span></label>
       </div>
       <div class="meta" style="margin-top:6px">二代黑话学习：AI 可用 <code>qq_slang_submit</code> 提交陌生词，也可由桥接自动提取；管理员在「黑话词库」页面筛选确认后，词条会自动写入黑话提示词并注入 <code>qq_get_prompt</code> 与后续唤醒。</div>
@@ -1995,36 +1994,7 @@ button:active:not(:disabled) {
       </div>
 
       </div></details>
-<details class="settings-group"><summary>本地 TTS（GPT-SoVITS）</summary><div class="settings-content">
-      <div class="meta" style="margin-bottom:8px">
-        把文字交给本机 GPT-SoVITS 生成语音，再走现有 QQ 语音条链路。<code>refAudioPath</code> 和 <code>promptText</code> 必须对应 GPT-SoVITS 那边的参考音频；API 只允许回环地址。
-      </div>
-      <div class="row"><label style="flex:1">启用 TTS</label><input type="checkbox" id="v2TtsEnabled" style="width:auto"></div>
-      <div class="row"><label style="flex:1">API 地址</label><input type="text" id="v2TtsApiUrl" style="flex:2" placeholder="http://127.0.0.1:9880"></div>
-      <div class="row"><label style="flex:1">参考音频路径</label><input type="text" id="v2TtsRefAudio" style="flex:2" placeholder="D:/.../reference.wav"></div>
-      <div class="row"><label style="flex:1">参考音频原话</label><textarea id="v2TtsPromptText" rows="2" style="flex:2" placeholder="和参考音频内容完全一致"></textarea></div>
-      <div class="row">
-        <label style="flex:1">参考语言</label><input type="text" id="v2TtsPromptLang" style="width:80px" placeholder="zh">
-        <label style="flex:1">合成语言</label><input type="text" id="v2TtsTextLang" style="width:80px" placeholder="zh">
-        <label style="flex:1">语速</label><input type="number" id="v2TtsSpeed" min="0.5" max="2" step="0.05" style="width:80px">
-      </div>
-      <div class="row">
-        <label style="flex:1">最多字数</label><input type="number" id="v2TtsMaxChars" min="1" max="2000" style="width:90px">
-        <label style="flex:1">超时(ms)</label><input type="number" id="v2TtsTimeout" min="1000" max="300000" style="width:110px">
-        <label style="flex:1">最长语音(秒)</label><input type="number" id="v2TtsMaxSeconds" min="1" max="300" style="width:90px">
-      </div>
-      <div class="row">
-        <label style="flex:1">音量倍数</label><input type="number" id="v2TtsVolume" min="0.1" max="3" step="0.1" style="width:80px">
-        <label style="flex:1">响度归一</label><input type="checkbox" id="v2TtsNormalize" style="width:auto">
-        <label style="flex:1">响度</label><select id="v2TtsLoudness" style="width:110px"><option value="quiet">quiet</option><option value="normal">normal</option><option value="loud">loud</option></select>
-      </div>
-      <div class="row">
-        <input type="text" id="v2TtsPreviewText" placeholder="输入一句测试文本，例如：你好呀，我是达妮娅。" style="flex:1;min-width:260px">
-        <button id="v2TtsPreviewBtn" type="button" class="btn-secondary">试听（不发送到 QQ）</button>
-        <span id="v2TtsMsg" class="meta"></span>
-      </div>
-      <audio id="v2TtsAudio" controls style="width:100%;margin-top:8px;display:none"></audio>
-      </div></details>
+<div class="meta" style="margin-top:10px">本地 TTS（GPT-SoVITS）的配置、试听和进程启停已移到控制中心 3099：「桥接 → 本地 TTS（GPT-SoVITS）」。</div>
 <details class="settings-group"><summary>唤醒推荐值（仅参考，AI 可不遵守）</summary><div class="settings-content">
       <div class="row">
         <label style="flex:1">默认模式</label>
@@ -3189,20 +3159,6 @@ async function loadV2Config() {
     document.getElementById('v2StickerCollectPerMin').value = stkCollect.maxPerMinute ?? 2;
     document.getElementById('v2StickerCollectPerHour').value = stkCollect.maxPerHour ?? 10;
     document.getElementById('v2StickerCollectRemarkMax').value = stkCollect.maxRemarkChars ?? 20;
-    const tts = c.tts || {};
-    document.getElementById('v2TtsEnabled').checked = tts.enabled === true;
-    document.getElementById('v2TtsApiUrl').value = tts.apiUrl || 'http://127.0.0.1:9880';
-    document.getElementById('v2TtsRefAudio').value = tts.refAudioPath || '';
-    document.getElementById('v2TtsPromptText').value = tts.promptText || '';
-    document.getElementById('v2TtsPromptLang').value = tts.promptLang || 'zh';
-    document.getElementById('v2TtsTextLang').value = tts.textLang || 'zh';
-    document.getElementById('v2TtsSpeed').value = tts.speedFactor ?? 1;
-    document.getElementById('v2TtsMaxChars').value = tts.maxChars ?? 200;
-    document.getElementById('v2TtsTimeout').value = tts.timeoutMs ?? 120000;
-    document.getElementById('v2TtsMaxSeconds').value = tts.maxSeconds ?? 60;
-    document.getElementById('v2TtsVolume').value = tts.defaultVolume ?? 1;
-    document.getElementById('v2TtsNormalize').checked = tts.normalize !== false;
-    document.getElementById('v2TtsLoudness').value = tts.loudness || 'normal';
     const ctx = c.context || {};
     document.getElementById('v2ContextRecentLimit').value = ctx.recentLimit ?? 100;
     document.getElementById('v2ContextUnreadLimit').value = ctx.unreadLimit ?? 30;
@@ -3295,21 +3251,6 @@ async function saveV2Config() {
         maxPerHour: Math.max(0, Math.round(Number(document.getElementById('v2StickerCollectPerHour').value) || 0)),
         maxRemarkChars: Math.min(50, Math.max(1, Math.round(Number(document.getElementById('v2StickerCollectRemarkMax').value) || 20)))
       }
-    },
-    tts: {
-      enabled: document.getElementById('v2TtsEnabled').checked,
-      apiUrl: document.getElementById('v2TtsApiUrl').value.trim(),
-      refAudioPath: document.getElementById('v2TtsRefAudio').value.trim(),
-      promptText: document.getElementById('v2TtsPromptText').value.trim(),
-      promptLang: document.getElementById('v2TtsPromptLang').value.trim() || 'zh',
-      textLang: document.getElementById('v2TtsTextLang').value.trim() || 'zh',
-      speedFactor: Number(document.getElementById('v2TtsSpeed').value) || 1,
-      maxChars: Math.max(1, Math.round(Number(document.getElementById('v2TtsMaxChars').value) || 200)),
-      timeoutMs: Math.max(1000, Math.round(Number(document.getElementById('v2TtsTimeout').value) || 120000)),
-      maxSeconds: Math.max(1, Math.round(Number(document.getElementById('v2TtsMaxSeconds').value) || 60)),
-      defaultVolume: Number(document.getElementById('v2TtsVolume').value) || 1,
-      normalize: document.getElementById('v2TtsNormalize').checked,
-      loudness: document.getElementById('v2TtsLoudness').value || 'normal'
     },
     context: {
       recentLimit: Math.round(Number(document.getElementById('v2ContextRecentLimit').value) || 100),
@@ -3736,25 +3677,7 @@ document.getElementById('v2ConfigSave').addEventListener('click', saveV2Config);
 document.getElementById('v2ConfigSaveTop').addEventListener('click', saveV2Config);
 document.getElementById('voiceRefreshBtn').addEventListener('click', () => loadVoiceLibrary(true));
 document.getElementById('voiceSendBtn').addEventListener('click', sendVoiceFromConsole);
-document.getElementById('v2TtsPreviewBtn').addEventListener('click', async () => {
-  const msg = document.getElementById('v2TtsMsg');
-  const audio = document.getElementById('v2TtsAudio');
-  const text = document.getElementById('v2TtsPreviewText').value.trim();
-  if (!text) { msg.textContent = '先输入测试文本'; msg.className = 'meta err'; return; }
-  msg.textContent = '合成中…'; msg.className = 'meta';
-  try {
-    const r = await api('/api/tts/preview', 'POST', { text });
-    if (!r.ok || !r.dataBase64) throw new Error(r.error || '没有返回音频');
-    audio.src = 'data:' + (r.mimeType || 'audio/wav') + ';base64,' + r.dataBase64;
-    audio.style.display = 'block';
-    audio.play().catch(() => {});
-    msg.textContent = '✅ 试听已生成（未发送到 QQ）';
-    msg.className = 'meta ok';
-  } catch (error) {
-    msg.textContent = '❌ ' + (error?.message || error);
-    msg.className = 'meta err';
-  }
-});
+
 async function refreshV2Activity() {
   try {
     const r = await api('/api/socialV2/activity');

@@ -92,7 +92,7 @@ function openBrowser(url) {
 // ── 设置与令牌 ────────────────────────────────────────────────────────────────
 
 function loadSettings() {
-  return { port: 3099, snowlumaDir: '', autoRestartBridge: true, autoRestartPlatform: true, platformDir: '', platformPort: 3120, napcatCommand: '', napcatQQApp: '', napcatHome: '', napcatWebuiPort: 0, napcatQuickLogin: '', ...(readJson(SETTINGS_FILE, {}) ?? {}) };
+  return { port: 3099, snowlumaDir: '', autoRestartBridge: true, autoRestartPlatform: true, platformDir: '', platformPort: 3120, napcatCommand: '', napcatQQApp: '', napcatHome: '', napcatWebuiPort: 0, napcatQuickLogin: '', ttsDir: '', ttsCommand: '', ttsArgs: [], ...(readJson(SETTINGS_FILE, {}) ?? {}) };
 }
 function saveSettings(s) { atomicWriteJsonFile(SETTINGS_FILE, s); }
 function loadOrCreateToken() {
@@ -118,7 +118,7 @@ function consoleToken(cfg) {
 }
 function consolePort(cfg) { return Number(cfg?.consolePort) > 0 ? Number(cfg.consolePort) : 3100; }
 
-async function bridgeApi(route, { method = 'GET', body } = {}) {
+async function bridgeApi(route, { method = 'GET', body, timeoutMs = 5000 } = {}) {
   const cfg = bridgeConfig();
   if (!cfg.valid) throw new Error(cfg.error);
   const token = consoleToken(cfg.value);
@@ -127,7 +127,7 @@ async function bridgeApi(route, { method = 'GET', body } = {}) {
     method,
     headers: { 'x-console-token': token, ...(body ? { 'content-type': 'application/json' } : {}) },
     body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(5000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok && data?.ok !== false) throw new Error(`HTTP ${res.status}`);
@@ -232,6 +232,53 @@ export async function startControlCenter({ open = true, port: portOverride = nul
   let updateInfo = null;
   let lastMigration = null;
   let napcatUpdate = null;
+
+  function ttsPort() {
+    const cfg = bridgeConfig();
+    const raw = String(cfg.value?.socialV2?.tts?.apiUrl || 'http://127.0.0.1:9880');
+    try { return Number(new URL(raw).port) || 9880; } catch { return 9880; }
+  }
+  function inspectTtsDir(dir) {
+    const value = String(dir || '').trim();
+    if (!value) return { ok: false, error: '还没有选择 GPT-SoVITS 目录', dir: '', port: ttsPort() };
+    const abs = path.resolve(value);
+    const script = path.join(abs, 'start-api.ps1');
+    const api = path.join(abs, 'api_v2.py');
+    if (!fs.existsSync(script) && !fs.existsSync(api)) return { ok: false, error: '目录里没有 start-api.ps1 或 api_v2.py', dir: abs, port: ttsPort() };
+    return { ok: true, dir: abs, script: fs.existsSync(script) ? script : '', api, port: ttsPort() };
+  }
+  function defaultTtsDir() {
+    if (settings.ttsDir) return settings.ttsDir;
+    if (process.env.GPT_SOVITS_DIR) return process.env.GPT_SOVITS_DIR;
+    // 从桥接配置的参考音频向上找 GPT-SoVITS 根目录，避免让用户再选一次。
+    const ref = String(bridgeConfig().value?.socialV2?.tts?.refAudioPath || '');
+    let cur = ref ? path.dirname(path.resolve(ref)) : '';
+    for (let i = 0; i < 5 && cur; i += 1) {
+      if (fs.existsSync(path.join(cur, 'start-api.ps1')) || fs.existsSync(path.join(cur, 'api_v2.py'))) return cur;
+      const parent = path.dirname(cur);
+      if (parent === cur) break;
+      cur = parent;
+    }
+    return '';
+  }
+  let ttsInfo = inspectTtsDir(defaultTtsDir());
+  function ttsLaunchSpec(info) {
+    if (!info?.ok) return { error: info?.error || 'GPT-SoVITS 目录无效' };
+    const shell = process.platform === 'win32' ? 'powershell.exe' : 'pwsh';
+    if (info.script) return { command: shell, args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', info.script], cwd: info.dir, display: 'start-api.ps1' };
+    if (settings.ttsCommand) {
+      const args = Array.isArray(settings.ttsArgs) ? settings.ttsArgs.map(String) : [];
+      return { command: String(settings.ttsCommand), args, cwd: info.dir, display: String(settings.ttsCommand) };
+    }
+    return { error: '目录里没有 start-api.ps1；请在 state/control-center.json 配置 ttsCommand/ttsArgs，或添加 start-api.ps1' };
+  }
+  const tts = createManagedProcess({
+    name: 'tts',
+    logDir: LOG_DIR,
+    redact,
+    resolveLaunch: () => { ttsInfo = inspectTtsDir(settings.ttsDir || defaultTtsDir()); return ttsLaunchSpec(ttsInfo); },
+    shouldRestart: () => false,
+  });
 
   const bridge = createManagedProcess({
     name: 'bridge',
@@ -450,6 +497,25 @@ export async function startControlCenter({ open = true, port: portOverride = nul
     return { waiting: q.waiting, updatedAt: q.updatedAt };
   }
 
+  async function ttsState() {
+    const port = ttsPort();
+    const reachable = await portOpen(port);
+    const configured = (() => {
+      const cfg = bridgeConfig().value?.socialV2?.tts;
+      return !!(cfg && cfg.enabled === true && cfg.refAudioPath && cfg.promptText);
+    })();
+    return {
+      ...tts.snapshot(),
+      lastSeq: tts.lastSeq,
+      dir: ttsInfo?.dir || settings.ttsDir || '',
+      info: ttsInfo,
+      port,
+      reachable,
+      external: reachable && !tts.running,
+      configured,
+    };
+  }
+
   async function stateSnapshot() {
     const h = await health();
     const pl = await platformState();
@@ -461,6 +527,7 @@ export async function startControlCenter({ open = true, port: portOverride = nul
       bridge: { ...bridge.snapshot(), lastSeq: bridge.lastSeq },
       snowluma: { ...snowluma.snapshot(), lastSeq: snowluma.lastSeq, dir: settings.snowlumaDir || null, info: snowInfo, update: updateInfo, lastMigration, releasesPage: SNOWLUMA_RELEASES_PAGE },
       platform: pl,
+      tts: await ttsState(),
       napcat: {
         ...napcat.snapshot(), lastSeq: napcat.lastSeq, info: inspectNapCat(settings), external: !napcat.running && await portOpen(napcatWebuiPort()), home: napcatDefaultHome(settings),
         // 版本：运行中的以后端自报为准（经接口平台）；Windows 上不运行时也能从启动文件旁的 package.json 读到
@@ -614,7 +681,7 @@ export async function startControlCenter({ open = true, port: portOverride = nul
         return res.end(buf);
       }
       if (req.method === 'GET' && p === '/api/logs') {
-        const src = { snowluma, platform, napcat }[url.searchParams.get('source')] ?? bridge;
+        const src = { snowluma, platform, napcat, tts }[url.searchParams.get('source')] ?? bridge;
         return send(200, { ok: true, lines: src.linesSince(Number(url.searchParams.get('after')) || 0, 2000), lastSeq: src.lastSeq });
       }
       // 打开桥接控制台：把桥接控制台令牌交给（已通过控制中心令牌鉴权的）本页，由页面带 ?token= 打开一次；
@@ -664,6 +731,52 @@ export async function startControlCenter({ open = true, port: portOverride = nul
           try { return send(200, await platformApi(`/v1/admin/${m[1]}`, { method: 'POST', body })); } catch (e) { return send(e.status && e.status < 500 ? e.status : 503, { ok: false, error: e.message }); }
         }
       }
+      // ── 本地 TTS（GPT-SoVITS）─────────────────────────────────────────────
+      if (req.method === 'POST' && p === '/api/tts/pick') {
+        return send(200, { ok: true, path: await pickDialog({ kind: 'folder', title: '选择 GPT-SoVITS 目录（含 start-api.ps1 或 api_v2.py）', initialDir: settings.ttsDir || ROOT }) });
+      }
+      if (req.method === 'POST' && p === '/api/tts/select') {
+        if (tts.running) return send(409, { ok: false, error: '请先停止 GPT-SoVITS 再更换目录' });
+        const info = inspectTtsDir(body.dir);
+        if (!info.ok) return send(400, { ok: false, error: info.error });
+        settings.ttsDir = info.dir;
+        saveSettings(settings);
+        ttsInfo = info;
+        tts.note(`已选择 GPT-SoVITS 目录：${info.dir}`);
+        return send(200, { ok: true, info });
+      }
+      if (req.method === 'GET' && p === '/api/tts/config') {
+        const cfg = bridgeConfig();
+        const state = await ttsState();
+        return send(200, { ok: true, config: cfg.value?.socialV2?.tts ?? {}, tools: { ttsSpeak: cfg.value?.socialV2?.tools?.ttsSpeak !== false }, state });
+      }
+      if (req.method === 'POST' && p === '/api/tts/config') {
+        if (!body || typeof body.config !== 'object' || Array.isArray(body.config)) return send(400, { ok: false, error: 'config 必须是对象' });
+        try {
+          await bridgeApi('/api/socialV2/config', { method: 'POST', body: { tts: body.config, ...(body.tools ? { tools: body.tools } : {}) }, timeoutMs: 15000 });
+          tts.note('TTS 配置已保存到桥接');
+          return send(200, { ok: true });
+        } catch (e) {
+          return send(400, { ok: false, error: e.message });
+        }
+      }
+      if (req.method === 'POST' && p === '/api/tts/preview') {
+        try {
+          const r = await bridgeApi('/api/tts/preview', { method: 'POST', body: { text: body.text }, timeoutMs: 180000 });
+          return send(200, r);
+        } catch (e) {
+          return send(400, { ok: false, error: e.message });
+        }
+      }
+      if (req.method === 'POST' && p === '/api/tts/start') {
+        if (!ttsInfo.ok) {
+          ttsInfo = inspectTtsDir(settings.ttsDir || defaultTtsDir());
+          if (!ttsInfo.ok) return send(400, { ok: false, error: ttsInfo.error });
+        }
+        if (!tts.running && await portOpen(ttsPort())) return send(409, { ok: false, error: `端口 ${ttsPort()} 已被占用：GPT-SoVITS 可能已经在别处运行。请先停止手动启动的实例，再从控制中心启动。` });
+        return send(200, tts.start());
+      }
+      if (req.method === 'POST' && p === '/api/tts/stop') return send(200, await tts.stop());
       if (req.method === 'POST' && p === '/api/command') {
         const r = await runCommand(body.text);
         return send(200, { ok: true, result: r });
@@ -682,6 +795,7 @@ export async function startControlCenter({ open = true, port: portOverride = nul
             ? { kind: 'file', title: '选择 NapCat 启动文件（.sh 脚本或可执行文件）', initialDir: settings.napcatCommand ? path.dirname(settings.napcatCommand) : '', extensions: [] }
             : { kind: 'file', title: '选择 NapCat 启动文件（NapCat.Shell 里的 .bat / .exe）', initialDir: settings.napcatCommand ? path.dirname(settings.napcatCommand) : '', extensions: ['bat', 'cmd', 'exe'] },
           'snowluma-dir': { kind: 'folder', title: '选择 SnowLuma 的解压目录（含 launcher.bat 的那一层）', initialDir: settings.snowlumaDir || ROOT },
+          'tts-dir': { kind: 'folder', title: '选择 GPT-SoVITS 目录（含 start-api.ps1 或 api_v2.py）', initialDir: settings.ttsDir || ROOT },
         };
         const spec = PURPOSES[String(body.purpose ?? '')];
         if (!spec) return send(400, { ok: false, error: '不支持的选择用途' });
@@ -818,7 +932,7 @@ export async function startControlCenter({ open = true, port: portOverride = nul
     if (shuttingDown) return;
     shuttingDown = true;
     log(`正在退出（${reason}）：先停止由控制中心启动的进程…`);
-    await Promise.allSettled([bridge.stop(), snowluma.stop(), napcat.stop(), platform.stop()]);
+    await Promise.allSettled([bridge.stop(), snowluma.stop(), napcat.stop(), platform.stop(), tts.stop()]);
     try { const l = readJson(LOCK_FILE); if (l?.pid === process.pid) fs.unlinkSync(LOCK_FILE); } catch {}
     await new Promise((r) => server.close(r));
     if (exitOnShutdown) process.exit(0);
@@ -841,9 +955,10 @@ export async function startControlCenter({ open = true, port: portOverride = nul
   if (!bridgeConfig().valid) bridge.note(bridgeConfig().error);
   platform.note('接口平台尚未启动 —— 需要时点击「启动接口平台」。启动后桥接不会自动改道，要经平台收发请在「设置」里点「接入桥接」。');
   snowluma.note(snowInfo.ok ? `SnowLuma 目录：${snowInfo.dir}（${snowInfo.version}）。未启动 —— 需要时点击「启动 SnowLuma」。` : '尚未选择 SnowLuma 目录。');
+  tts.note(ttsInfo.ok ? `GPT-SoVITS 目录：${ttsInfo.dir}。未启动 —— 需要时点击「启动 GPT-SoVITS」。` : '尚未选择 GPT-SoVITS 目录。');
   log(`已启动：http://127.0.0.1:${server.address().port}/  （令牌在 state/control-center-token）`);
   if (open) openBrowser(`http://127.0.0.1:${server.address().port}/#t=${token}`);
-  return { server, bridge, snowluma, napcat, platform, token, port: server.address().port, shutdown, runCommand, settings, pageUrl };
+  return { server, bridge, snowluma, napcat, tts, platform, token, port: server.address().port, shutdown, runCommand, settings, pageUrl };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

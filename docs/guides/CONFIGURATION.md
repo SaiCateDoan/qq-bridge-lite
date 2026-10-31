@@ -114,7 +114,7 @@ AI 用 `qq_speak(text)` 把文字交给本机 GPT-SoVITS（`/tts`）合成 WAV�
 | `maxBytes` / `maxSeconds` | 20MiB / 60 | 音频大小/时长上限 |
 | `defaultVolume` / `loudness` / `normalize` | `1` / `normal` / `true` | 发送前的音量/响度处理；`normalize` 默认开，避免 TTS 原始音量过轻 |
 
-当前部署实例（达妮娅 v2ProPlus）的 live 配置填的是本机 Dania 参考音频；控制台「二代仿真 → 本地 TTS（GPT-SoVITS）」可以直接改并试听（试听不会发到 QQ）。
+当前部署实例（达妮娅 v2ProPlus）的 live 配置填的是本机 Dania 参考音频；控制中心 **3099 → 桥接 → 本地 TTS（GPT-SoVITS）** 可以直接改、启停服务并试听（试听不会发到 QQ）。
 
 ## `socialV2.memes` —— AstrBot 本地图库 / 远程包
 

@@ -39,7 +39,7 @@ ok('dsh-meme 联动页', html.includes('id="dshMemeStatus"') && html.includes('i
 ok('表情链路选择器', html.includes('id="v2MemeBackend"') && html.includes('data-meme-backend="astrbot"') && html.includes('data-meme-backend="qq"'), '三套链路');
 ok('AstrBot 图库页', html.includes('id="section-memes"') && html.includes('data-page="memes"'), '本地图库/远程包');
 ok('AstrBot 封面 data URL', html.includes('coverMap') && /img-src 'self' data:/.test(page.headers.get('content-security-policy') || ''), 'CSP/前端映射');
-ok('本地 TTS 设置', html.includes('id="v2TtsEnabled"') && html.includes('data-v2-tool="ttsSpeak"') && html.includes('id="v2TtsPreviewBtn"'), 'GPT-SoVITS 开关/试听');
+ok('TTS 已迁移到 3099', html.includes('已移到控制中心 3099') && !html.includes('v2TtsEnabled'), '3100 只保留跳转提示');
 
 // 2. QQ 提示词（唯一一套）
 let r = await api('/api/memes/stats');

@@ -208,6 +208,62 @@
         <button class="primary" type="submit">发送</button>
       </form>
     </section>
+
+    <section class="card" aria-labelledby="ttsTitle" style="margin-top:14px">
+      <div class="card-head">
+        <span class="dot" id="ttsDot"></span>
+        <h2 id="ttsTitle">本地 TTS（GPT-SoVITS）</h2>
+        <span class="badge" id="ttsState">未启动</span>
+        <span class="badge" id="ttsPort">端口 —</span>
+        <span class="grow"></span>
+        <button class="primary" id="ttsStart">启动 GPT-SoVITS</button>
+        <button class="danger" id="ttsStop">停止</button>
+      </div>
+      <div style="padding:10px 14px;display:flex;flex-direction:column;gap:8px">
+        <div class="row">
+          <input type="text" id="ttsDir" placeholder="GPT-SoVITS 目录（含 start-api.ps1 或 api_v2.py）" style="flex:1;min-width:260px">
+          <button id="ttsPick" type="button">浏览…</button>
+          <button id="ttsUseDir" type="button">使用此目录</button>
+        </div>
+        <div class="meta" id="ttsHint">选择目录后点「启动 GPT-SoVITS」；控制中心会按目录里的 start-api.ps1 启动并托管进程。</div>
+
+        <div class="row">
+          <label class="check"><input type="checkbox" id="ttsEnabled"> 启用 TTS</label>
+          <label class="check"><input type="checkbox" id="ttsNormalize" checked> 响度归一</label>
+          <label class="check"><input type="checkbox" id="ttsSpeakTool"> 注册 qq_speak</label>
+          <span class="grow"></span>
+          <span class="meta" id="ttsMsg"></span>
+          <button id="ttsSave" type="button">保存 TTS 配置</button>
+        </div>
+        <div class="row">
+          <label style="flex:0 0 95px">API 地址</label>
+          <input type="text" id="ttsApiUrl" placeholder="http://127.0.0.1:9880" style="flex:1;min-width:240px">
+        </div>
+        <div class="row">
+          <label style="flex:0 0 95px">参考音频</label>
+          <input type="text" id="ttsRefAudio" placeholder="D:/.../reference.wav" style="flex:1;min-width:240px">
+        </div>
+        <div class="row">
+          <label style="flex:0 0 95px">参考原话</label>
+          <textarea id="ttsPromptText" rows="2" style="flex:1;min-width:240px;font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:6px 10px"></textarea>
+        </div>
+        <div class="row">
+          <label style="flex:0 0 95px">参考语言</label><input type="text" id="ttsPromptLang" style="width:80px" placeholder="zh">
+          <label style="flex:0 0 40px">合成语言</label><input type="text" id="ttsTextLang" style="width:80px" placeholder="zh">
+          <label style="flex:0 0 40px">语速</label><input type="text" id="ttsSpeed" style="width:70px" placeholder="1">
+          <label style="flex:0 0 70px">最多字数</label><input type="text" id="ttsMaxChars" style="width:70px" placeholder="200">
+          <label style="flex:0 0 70px">超时ms</label><input type="text" id="ttsTimeout" style="width:90px" placeholder="120000">
+          <label style="flex:0 0 70px">最长秒</label><input type="text" id="ttsMaxSeconds" style="width:70px" placeholder="60">
+          <label style="flex:0 0 40px">音量</label><input type="text" id="ttsVolume" style="width:60px" placeholder="1">
+          <select id="ttsLoudness" style="width:90px"><option value="quiet">quiet</option><option value="normal">normal</option><option value="loud">loud</option></select>
+        </div>
+        <div class="row">
+          <input type="text" id="ttsPreviewText" placeholder="输入一句试听文本，例如：你好呀，我是达妮娅。" style="flex:1;min-width:260px">
+          <button id="ttsPreviewBtn" type="button">试听（不发 QQ）</button>
+        </div>
+        <audio id="ttsAudio" controls style="width:100%;display:none"></audio>
+      </div>
+    </section>
   </section>
 
   <!-- ── 接口平台 ─────────────────────────────────────────── -->
@@ -742,10 +798,72 @@
   };
   const rt = (r) => (r ? (reasonText[r] ?? r) : '正常');
 
+  // ── 本地 TTS（GPT-SoVITS）──────────────────────────────────────────────
+  let ttsLoaded = false;
+  function ttsVal(id) { return $(id)?.value?.trim?.() ?? ''; }
+  async function loadTtsConfig() {
+    try {
+      const r = await api('/api/tts/config');
+      const c = r.config || {};
+      ttsLoaded = true;
+      $('ttsEnabled').checked = c.enabled === true;
+      $('ttsApiUrl').value = c.apiUrl || 'http://127.0.0.1:9880';
+      $('ttsRefAudio').value = c.refAudioPath || '';
+      $('ttsPromptText').value = c.promptText || '';
+      $('ttsPromptLang').value = c.promptLang || 'zh';
+      $('ttsTextLang').value = c.textLang || 'zh';
+      $('ttsSpeed').value = c.speedFactor ?? 1;
+      $('ttsMaxChars').value = c.maxChars ?? 200;
+      $('ttsTimeout').value = c.timeoutMs ?? 120000;
+      $('ttsMaxSeconds').value = c.maxSeconds ?? 60;
+      $('ttsVolume').value = c.defaultVolume ?? 1;
+      $('ttsNormalize').checked = c.normalize !== false;
+      $('ttsLoudness').value = c.loudness || 'normal';
+      $('ttsSpeakTool').checked = r.tools?.ttsSpeak !== false;
+      if (!$('ttsDir').value) $('ttsDir').value = r.state?.dir || '';
+    } catch (e) {
+      $('ttsMsg').textContent = '读取 TTS 配置失败：' + e.message;
+      $('ttsMsg').className = 'meta err';
+    }
+  }
+  function renderTts() {
+    const t = S?.tts;
+    if (!t) return;
+    const run = !!t.running;
+    const ext = !!t.external;
+    setDot($('ttsDot'), run ? (t.reachable ? 'on' : 'warn') : (ext ? 'warn' : 'off'));
+    $('ttsState').textContent = run ? (t.reachable ? '运行中' : '启动中') : (ext ? '外部运行' : '未启动');
+    $('ttsPort').textContent = '端口 ' + (t.port || 9880);
+    $('ttsStart').disabled = run || ext;
+    $('ttsStop').disabled = !run;
+    if (!$('ttsDir').matches(':focus')) $('ttsDir').value = t.dir || '';
+    if (run && t.reachable) $('ttsHint').textContent = 'GPT-SoVITS 已启动；TTS 配置修改后点保存。';
+    else if (ext) $('ttsHint').textContent = '检测到外部运行的 GPT-SoVITS；控制中心不会接管它，先停止那个实例再从上面启动。';
+    else $('ttsHint').textContent = '选择目录后点「启动 GPT-SoVITS」；控制中心会按目录里的 start-api.ps1 启动并托管进程。';
+  }
+  function ttsConfigFromForm() {
+    return {
+      enabled: $('ttsEnabled').checked,
+      apiUrl: ttsVal('ttsApiUrl') || 'http://127.0.0.1:9880',
+      refAudioPath: ttsVal('ttsRefAudio'),
+      promptText: ttsVal('ttsPromptText'),
+      promptLang: ttsVal('ttsPromptLang') || 'zh',
+      textLang: ttsVal('ttsTextLang') || 'zh',
+      speedFactor: Number(ttsVal('ttsSpeed')) || 1,
+      maxChars: Math.max(1, Math.round(Number(ttsVal('ttsMaxChars')) || 200)),
+      timeoutMs: Math.max(1000, Math.round(Number(ttsVal('ttsTimeout')) || 120000)),
+      maxSeconds: Math.max(1, Math.round(Number(ttsVal('ttsMaxSeconds')) || 60)),
+      defaultVolume: Number(ttsVal('ttsVolume')) || 1,
+      normalize: $('ttsNormalize').checked,
+      loudness: $('ttsLoudness').value || 'normal'
+    };
+  }
+
   async function refresh() {
     if (authFailed) return;
     try { S = await api('/api/state'); } catch { return; }
     renderBridge();
+    renderTts();
     renderPlatform();
     renderSnow();
     renderNapcat();
@@ -1105,6 +1223,45 @@
     document.body.innerHTML = '<div style="padding:40px;font-size:15px">控制中心已退出，可以关闭这个页面。</div>';
   };
 
+  // ── TTS 按钮 ────────────────────────────────────────────────────────────
+  $('ttsPick').onclick = async () => { try { const r = await api('/api/tts/pick', {}); if (r.path) $('ttsDir').value = r.path; } catch (e) { toast(e.message, 'bad'); } };
+  $('ttsUseDir').onclick = async () => {
+    const dir = ttsVal('ttsDir');
+    if (!dir) return toast('先输入或选择目录', 'bad');
+    try {
+      const r = await api('/api/tts/select', { dir });
+      $('ttsDir').value = r.info?.dir || dir;
+      toast('已选择 GPT-SoVITS 目录', 'ok');
+      refresh();
+    } catch (e) { toast(e.message, 'bad'); }
+  };
+  $('ttsStart').onclick = () => act(() => api('/api/tts/start', {}), 'GPT-SoVITS 已启动');
+  $('ttsStop').onclick = async () => { if (await confirmBox('停止 GPT-SoVITS', '停止后语音合成不可用；QQ 文字聊天不受影响。', '停止')) act(() => api('/api/tts/stop', {}), 'GPT-SoVITS 已停止'); };
+  $('ttsSave').onclick = async () => {
+    try {
+      const r = await api('/api/tts/config', { config: ttsConfigFromForm(), tools: { ttsSpeak: $('ttsSpeakTool').checked } });
+      $('ttsMsg').textContent = r.ok ? '✅ TTS 配置已保存（工具开关需重启 DSH 才刷新）' : '❌ ' + (r.error || '失败');
+      $('ttsMsg').className = r.ok ? 'meta ok' : 'meta err';
+      await loadTtsConfig();
+      refresh();
+    } catch (e) { $('ttsMsg').textContent = '❌ ' + e.message; $('ttsMsg').className = 'meta err'; }
+  };
+  $('ttsPreviewBtn').onclick = async () => {
+    const text = ttsVal('ttsPreviewText');
+    const msg = $('ttsMsg');
+    if (!text) { msg.textContent = '先输入试听文本'; msg.className = 'meta err'; return; }
+    msg.textContent = '合成中…'; msg.className = 'meta';
+    try {
+      const r = await api('/api/tts/preview', { text });
+      if (!r.ok || !r.dataBase64) throw new Error(r.error || '没有返回音频');
+      $('ttsAudio').src = 'data:' + (r.mimeType || 'audio/wav') + ';base64,' + r.dataBase64;
+      $('ttsAudio').style.display = 'block';
+      $('ttsAudio').play().catch(() => {});
+      msg.textContent = '✅ 试听已生成（未发送到 QQ）';
+      msg.className = 'meta ok';
+    } catch (e) { msg.textContent = '❌ ' + e.message; msg.className = 'meta err'; }
+  };
+
   // ── 命令行（固定命令集）──
   const cmdHistory = []; let hi = 0;
   $('cmdForm').onsubmit = async (e) => {
@@ -1287,6 +1444,7 @@
   };
 
   // ── 轮询：全页只有这一组定时器，切换标签不会新增请求或连接 ──
+  loadTtsConfig();
   refresh(); bridgeLog.poll(); snowLog.poll(); plLog.poll(); napLog.poll();
   setInterval(refresh, 2500);
   setInterval(() => { bridgeLog.poll(); snowLog.poll(); plLog.poll(); napLog.poll(); }, 1000);

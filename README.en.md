@@ -66,7 +66,7 @@ These come from the two upstreams or the existing enhanced lineage. This branch 
 
 | Port | Purpose |
 | --- | --- |
-| **3099** | **Control center**: start/stop the bridge, bind and start SnowLuma/NapCat, interface platform, versions/logs |
+| **3099** | **Control center**: start/stop the bridge, bind and start SnowLuma/NapCat, start/configure local TTS, interface platform, versions/logs |
 | **3100** | **Bridge console**: QQ prompt, tool switches, meme gallery, voice/TTS, sessions/security |
 
 **Port 3100 intentionally has no SnowLuma bind/start UI. That lives in the 3099 control center.**
@@ -123,7 +123,7 @@ Then use the control center as described above.
 **AI voice is disabled by default** (`socialV2.voice.enabled` and `tools.sendVoice` default to `false`): put audio into `audio/`, then enable it in the console.
 The standalone tool lives in `../voice-tool/`: `node voice-cli.mjs` / `node voice-gui.mjs`.
 
-Local GPT-SoVITS is configured under "Gen-2 simulation → Local TTS"; the AI uses `qq_speak` to synthesise and send a voice message. It is separate from the audio library. See [docs/guides/VOICE.md](docs/guides/VOICE.md).
+Local GPT-SoVITS is configured and started in the **3099 control center → Bridge → Local TTS**; the AI uses `qq_speak` to synthesise and send a voice message. It is separate from the audio library. See [docs/guides/VOICE.md](docs/guides/VOICE.md).
 
 ## Tests
 
