@@ -12,44 +12,41 @@ This repository references and merges what fits this branch from:
 
 It is **not tied to a specific upstream version**. Attribution, MIT licensing and third-party boundaries are in [NOTICE.md](NOTICE.md) and [LICENSE](LICENSE).
 
-## Implemented in this branch
+## What this branch improves
 
-These are the features written or rewritten in this branch (commit hashes in parentheses).
+These are written or rewritten in this branch. The list describes behaviour, not individual commits or source files.
 
-### Lightweight single-pipeline refactor (`9fbf264`)
+### One pipeline
 
 - Removed `chat` / `closed-agent` / gen-1 simulation; only `reserved2` remains.
-- Removed persona cards, the L1–L3 admin surface, approvals/TOTP and `qq-mode-console`.
-- Collapsed prompts into one `qq-chat-v2`; persona stays in the DSH global prompt.
+- Removed persona cards, the L1–L3 admin surface, approvals/TOTP and mode switching.
+- Collapsed scattered prompts into one `qq-chat-v2`; persona stays in the DSH global prompt.
 - Deleted the old social state machine and dead auto-forwarding code.
 
-### Multimodal media (`52370ac`, `7914f99`)
+### Images and animations
 
-- `src/media-compress.js`: sharp/WebP adaptive compression for oversized images.
+- Oversized images are compressed to WebP instead of being dropped.
 - Animated images are sampled evenly and tiled into a 3×2 contact sheet by default; multi-frame optional.
-- Unified `socialV2.media` budgets: download size, decode pixels, long edge, quality, frame count and per-frame bytes.
-- Time-awareness and dependency-warning cleanup.
+- Unified image download/decode/size budgets and added time-awareness/dependency cleanup.
 
-### Meme backends and cover proxy (`5856695`, `9470fd6`, `76dc608`)
+### Three meme backends
 
-- `src/meme-library.js`: content-addressed local gallery, dedupe, index recovery, description/emotion/tag search.
-- `src/meme-packs.js`: AstrBot community index, manifest, GitHub tree and optional semantic metadata; async pack downloads.
-- `src/dsh-meme-client.js`: loopback HTTP access to the DSH dsh-meme gallery.
-- `socialV2.memeBackend`: `astrbot` / `qq` / `dshmeme`, one active at a time; MCP registration-time filtering and backend route guards.
-- Console backend selector and meme gallery; AstrBot pack covers are fetched server-side as data URLs (CSP-safe), batched and cached.
+- Supports AstrBot local/remote packs (default), QQ favorites and DSH dsh-meme, one active at a time.
+- AstrBot side includes pack search, manifest/tree parsing, per-image semantics, async downloads, covers and progress.
+- Only the active backend's MCP tools are registered; backend routes are guarded and galleries never interoperate.
+- Console backend selector and AstrBot gallery; pack covers are fetched by the bridge and embedded, avoiding browser CSP/CORS, with batching and caching.
 
-### Local GPT-SoVITS voice (`c51b946`)
+### Local GPT-SoVITS voice
 
-- `src/tts-client.js`: loopback-only, validates WAV header, size and timeout, readable errors.
-- `socialV2.tts`: API URL, reference audio/text, languages, speed, max chars, timeout, volume/loudness normalisation.
-- `qq_speak(text)` MCP tool and `POST /api/socialV2/tts`: WAV goes through the existing `record` path with allowlists, agent token, voice rate limits, auditing and read-back.
-- Console "Gen-2 simulation → Local TTS" settings with preview; `POST /api/tts/preview` never sends to QQ.
-- Loudnorm is applied by default because raw TTS output is often too quiet.
+- Added `qq_speak`: turn text into a QQ voice message instead of only sending files from the audio library.
+- Integrated local GPT-SoVITS synthesis, WAV validation, temp-file handling, sending, rate limits, auditing and read-back.
+- Console settings for reference audio/text, language, speed, length and timeout, plus preview that never sends to QQ.
+- Loudness normalisation by default because raw TTS output is often too quiet.
 
 ### Docs and operations
 
-- Simplified README/configuration/SnowLuma troubleshooting.
-- SnowLuma troubleshooting: if only WebUI 5099 is listening, set `hookAutoLoad: true` in `SnowLuma/config/runtime.json` so it injects the running QQ process and opens 3000/3001.
+- Reorganised README, configuration notes and SnowLuma troubleshooting; clarified the 3099 control center vs 3100 bridge console.
+- Documented the case where SnowLuma only exposes WebUI (no 3000/3001): QQ process injection/auto-load needs attention.
 
 ## Inherited / merged from upstreams
 
