@@ -110,6 +110,7 @@
     "autoResearch": true
   },
   "socialV2": {
+    "memeBackend": "astrbot",
     "enabled": true,
     "autoReplyCheckMs": 30000,
     "agentPreset": "qq-chat-v2",
@@ -152,7 +153,13 @@
       "ownerGroupAccess": false,
       "dshMemeSearch": true,
       "dshMemeSend": true,
-      "dshMemeLearn": true
+      "dshMemeLearn": true,
+      "memesSearch": true,
+      "memesPacks": true,
+      "memesPackDownload": true,
+      "memesCollect": true,
+      "memesSend": true,
+      "memesImage": true
     },
     "ownerRelay": {
       "maxPerHour": 10,
@@ -291,6 +298,21 @@
       "enabled": true,
       "baseUrl": "",
       "maxBytes": 10485760
+    },
+    "memes": {
+      "enabled": true,
+      "dir": "",
+      "remoteUrl": "",
+      "maxBytes": 10485760,
+      "maxEntries": 3000,
+      "promptMax": 5,
+      "packMaxImages": 800,
+      "packConcurrency": 3,
+      "packNotify": true,
+      "collect": {
+        "maxPerMinute": 3,
+        "maxPerHour": 20
+      }
     }
   },
   "webSearch": {

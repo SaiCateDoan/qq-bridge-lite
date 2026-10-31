@@ -3,13 +3,26 @@
 本仓库（qq-bridge-enhanced）基于上游 [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge) `v0.2.0-r3`。
 上游更早的版本历史见 [docs/guides/DSH_020_ADAPTATION.md](docs/guides/DSH_020_ADAPTATION.md) 与上游 Release 页面。
 
+## v1.0.5 —— 2026-10-31
+
+**三套表情链路合并，一次只启用一套**：AstrBot 本地图库/远程包（默认）、QQ 收藏表情、DSH dsh-meme；切换后 MCP 只注册当前链路的工具，三套数据互不导入。
+
+### 变化
+- 新增 `socialV2.memeBackend`（`astrbot` / `qq` / `dshmeme`），当前默认 `astrbot`。
+- 控制台「二代仿真」新增「表情链路」选择器；只显示当前链路的工具开关/参数组，切换后提示重启 DSH 以隐藏其它链路 MCP 工具。
+- 合并 `dev_astrbot_meme` 的 AstrBot 本地图库与远程包代码：`qq_search_memes` / `qq_search_meme_packs` / `qq_download_meme_pack` / `qq_collect_meme` / `qq_send_meme` / `qq_get_meme_image`，控制台「表情图库」页恢复。
+- dsh-meme 工具改名为 `qq_dshmeme_search` / `qq_dshmeme_send` / `qq_dshmeme_learn`，避免与 AstrBot 的通用工具名冲突。
+- 三套接口在后端按 `memeBackend` 强校验；旧 QQ 收藏工具/接口仅在 `qq` 模式可用。
+- 预设提示词改为“当前只启用一套链路”的通用规则，具体工具由唤醒提示按 backend 注入。
+- 新增 `test-meme-library` / `test-meme-packs` 到 audit；audit 57/57。
+
 ## v1.0.4 —— 2026-10-31
 
 **与 DSH dsh-meme 插件联动**：qq-bridge 不再自己维护表情图库，直接通过 DSH Web 的 `/dsh-memes-api` 使用 dsh-meme 的图库/开关/描述。
 
 ### 变化
 - 新增 `src/dsh-meme-client.js`：回环 HTTP 读取 dsh-meme 的启用图库、按描述/情绪桶检索、下载原图、上传到「我的收藏」；尊重 `~/.dsh/dsh-expression.json` 的 `enabledPacks`。
-- 新增 MCP 工具 `qq_search_memes` / `qq_send_meme` / `qq_learn_meme`；发送走原有白名单、限流和发送队列，图片字节从 dsh-meme 取，不依赖 QQ 收藏。
+- 新增 MCP 工具 `qq_dshmeme_search` / `qq_dshmeme_send` / `qq_dshmeme_learn`；发送走原有白名单、限流和发送队列，图片字节从 dsh-meme 取，不依赖 QQ 收藏。
 - QQ 控制台「二代仿真」新增 dsh-meme 连接状态和「打开 dsh-meme 图库面板」；工具开关可单独关闭。
 - 唤醒提示词优先引导 dsh-meme 工具；旧的 QQ 收藏工具保留，但新图库流程不再使用它们。
 - 新增 `test-dsh-meme`（本地 HTTP 夹具）；audit 55/55。

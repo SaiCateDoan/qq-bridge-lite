@@ -314,9 +314,15 @@ const TOOL_CONFIG_FLAGS = {
   qq_get_sticker_image: 'getStickerImage',
   qq_send_sticker: 'sendSticker',
   qq_collect_sticker: 'collectSticker',
-  qq_search_memes: 'dshMemeSearch',
-  qq_send_meme: 'dshMemeSend',
-  qq_learn_meme: 'dshMemeLearn',
+  qq_search_memes: 'memesSearch',
+  qq_search_meme_packs: 'memesPacks',
+  qq_download_meme_pack: 'memesPackDownload',
+  qq_collect_meme: 'memesCollect',
+  qq_send_meme: 'memesSend',
+  qq_get_meme_image: 'memesImage',
+  qq_dshmeme_search: 'dshMemeSearch',
+  qq_dshmeme_send: 'dshMemeSend',
+  qq_dshmeme_learn: 'dshMemeLearn',
   qq_get_self_image: 'getSelfImage',
   qq_sticker_note: 'stickerNote',
   qq_set_sticker_remark: 'setStickerRemark',
@@ -976,7 +982,7 @@ if (cfg.socialV2?.tools?.getImages !== false) {
 }
 
 // ── 表情包体系工具（二代仿真模式） ─────────────────────────────────────────
-if (cfg.socialV2?.sticker?.enabled !== false && cfg.socialV2?.tools?.listStickers !== false) {
+if (cfg.socialV2?.memeBackend === 'qq' && cfg.socialV2?.sticker?.enabled !== false && cfg.socialV2?.tools?.listStickers !== false) {
   server.tool(
     'qq_list_stickers',
     '查看 QQ 账号上已收藏的表情包（自定义表情）列表：包含 emoji_id、备注 desc、本地笔记 localNote、标签 tags、使用次数等。可通过 query 按备注/笔记/标签搜索；无备注的表情可以先调用 qq_get_sticker_image 看图理解，再用 qq_sticker_note 记下含义。刚新增/删除表情后如需立即同步，请传 refresh=true。',
@@ -1005,7 +1011,7 @@ if (cfg.socialV2?.sticker?.enabled !== false && cfg.socialV2?.tools?.listSticker
   );
 }
 
-if (cfg.socialV2?.sticker?.enabled !== false && cfg.socialV2?.tools?.getStickerImage !== false) {
+if (cfg.socialV2?.memeBackend === 'qq' && cfg.socialV2?.sticker?.enabled !== false && cfg.socialV2?.tools?.getStickerImage !== false) {
   server.tool(
     'qq_get_sticker_image',
     '获取指定收藏表情的图片内容并直接以图像返回给模型（视觉模型可“看懂”）。当 qq_list_stickers 返回的表情 desc/localNote 为空、或你想确认表情实际长什么样时调用。stickerId 可用 qq_list_stickers 返回的 id / md5 / url。',
@@ -1033,7 +1039,7 @@ if (cfg.socialV2?.sticker?.enabled !== false && cfg.socialV2?.tools?.getStickerI
   );
 }
 
-if (cfg.socialV2?.sticker?.enabled !== false && cfg.socialV2?.tools?.sendSticker !== false) {
+if (cfg.socialV2?.memeBackend === 'qq' && cfg.socialV2?.sticker?.enabled !== false && cfg.socialV2?.tools?.sendSticker !== false) {
   server.tool(
     'qq_send_sticker',
     '在指定会话发送一个 QQ 收藏表情包（自定义表情）。stickerId 用 qq_list_stickers 返回的 id / md5 / url。注意：一条消息只能是一张表情，不能在同一气泡里附带文字；想说的话请先用 qq_send_message / qq_reply 作为单独气泡发送，再单独发这张表情。需要引用/点名时可用 replyToMessageId / atUserId（群聊）。真人偶尔用表情包很自然，但别刷屏。',
@@ -1060,7 +1066,7 @@ if (cfg.socialV2?.sticker?.enabled !== false && cfg.socialV2?.tools?.sendSticker
   );
 }
 
-if (cfg.socialV2?.sticker?.enabled !== false && cfg.socialV2?.tools?.collectSticker !== false) {
+if (cfg.socialV2?.memeBackend === 'qq' && cfg.socialV2?.sticker?.enabled !== false && cfg.socialV2?.tools?.collectSticker !== false) {
   server.tool(
     'qq_collect_sticker',
     '收藏当前会话里别人发的一张表情/图片到你的 QQ 收藏表情，并可写一句简短备注（如“好图偷了，兄弟”）。messageId 用 qq_get_unread_messages / qq_get_recent_messages 返回的 messageId 或 seq。注意：不要频繁收藏，只在真的觉得有意思/好用/戳中你时才偷图；收藏后你可以在 qq_list_stickers 里看到并继续使用。',
@@ -1086,11 +1092,172 @@ if (cfg.socialV2?.sticker?.enabled !== false && cfg.socialV2?.tools?.collectStic
   );
 }
 
-// ── dsh-meme 图库联动（搜索 / 发送 / 学习） ────────────────────────────────
-if (cfg.socialV2?.dshMeme?.enabled !== false && cfg.socialV2?.tools?.dshMemeSearch !== false) {
+// ── 本地表情图库（收集 / 挑选 / 发送） ──────────────────────────────────────
+if ((cfg.socialV2?.memeBackend || 'astrbot') === 'astrbot' && cfg.socialV2?.memes?.enabled !== false && cfg.socialV2?.tools?.memesPacks !== false) {
+  server.tool(
+    'qq_search_meme_packs',
+    '检索远程「表情包」（pack，不是单张表情）：按名称/描述/标签找包，返回包 ID、说明和封面头图；用描述和头图判断是不是想要的那一套。选定后调用 qq_download_meme_pack(packId) 后台下载，完成后会收到内部通知，届时用 qq_search_memes 检索本地图片。',
+    {
+      key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
+      token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
+      query: z.string().describe('想要的风格/角色/情绪/场景，例如“猫 卖萌”“无语 摆烂”'),
+      limit: z.number().optional().describe('最多返回几个包，默认 5，最大 10')
+    },
+    async ({ key, token, query, limit }) => {
+      try {
+        const q = new URLSearchParams({ key, query: String(query || ''), covers: '3' });
+        if (limit != null) q.set('limit', String(limit));
+        const data = await agentApi('/api/socialV2/memes/packs/search?' + q.toString(), { headers: { 'x-agent-token': token }, timeoutMs: 60000 });
+        const textData = { ...data, covers: undefined };
+        const content = [{ type: 'text', text: serializeModelData(textData) }];
+        if (Array.isArray(data?.covers)) {
+          for (const cover of data.covers.slice(0, 3)) {
+            if (!cover?.data || !cover?.mimeType) continue;
+            content.push({ type: 'text', text: '表情包「' + cover.packId + '」的封面头图：' });
+            content.push({ type: 'image', mimeType: cover.mimeType, data: cover.data });
+          }
+        }
+        return { content };
+      } catch (error) {
+        return { content: [{ type: 'text', text: '检索表情包失败：' + (error?.message ?? error) }], isError: true };
+      }
+    }
+  );
+}
+
+if ((cfg.socialV2?.memeBackend || 'astrbot') === 'astrbot' && cfg.socialV2?.memes?.enabled !== false && cfg.socialV2?.tools?.memesPackDownload !== false) {
+  server.tool(
+    'qq_download_meme_pack',
+    '把一个远程表情包（pack）异步下载到本地图库。这个工具会立即返回任务 ID，不会等下载完成；下载完成后桥接会发内部通知，提醒你用 qq_search_memes 在本地按描述/情绪检索具体图片。已经下过的包默认直接返回 installed=true。',
+    {
+      key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
+      token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
+      packId: z.string().describe('qq_search_meme_packs 返回的包 ID'),
+      force: z.boolean().optional().describe('已安装时是否强制重新下载，默认 false')
+    },
+    async ({ key, token, packId, force }) => {
+      try {
+        const data = await agentApi('/api/socialV2/memes/packs/download', {
+          method: 'POST',
+          headers: { 'x-agent-token': token },
+          body: JSON.stringify({ key, packId: String(packId), force: force === true }),
+          timeoutMs: 60000
+        });
+        return { content: [{ type: 'text', text: serializeModelData(data) }] };
+      } catch (error) {
+        return { content: [{ type: 'text', text: '开始下载表情包失败：' + (error?.message ?? error) }], isError: true };
+      }
+    }
+  );
+}
+
+if ((cfg.socialV2?.memeBackend || 'astrbot') === 'astrbot' && cfg.socialV2?.memes?.enabled !== false && cfg.socialV2?.tools?.memesSearch !== false) {
   server.tool(
     'qq_search_memes',
-    '搜索 dsh-meme 图库（DSH 设置→表情包里的图库），不是 QQ 收藏表情。按 query 搜描述/关键词/文件名，或按 tag 情绪桶（happy/angry/sad/shy/confused/daily）抽图。返回候选 id、所属图库、描述、tag；挑中后用 qq_send_meme(memeId) 发。没有合适的就换关键词或纯文字，别硬发。',
+    '搜索表情图库：先查本地，再查配置的远程图库。按描述/标签/分类/情绪匹配，返回候选 ID（本地是 "#01"，远程是 "remote:..."）。想发时用 qq_send_meme(memeId=候选 ID)；远程候选会在发送时自动下载并缓存到本地。',
+    {
+      key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
+      token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
+      query: z.string().describe('想表达的情绪/场景/内容，例如“无语 摆烂”“得意的猫”'),
+      limit: z.number().optional().describe('最多返回多少条，默认 8，最大 20')
+    },
+    async ({ key, token, query, limit }) => {
+      try {
+        const q = new URLSearchParams({ key, query: String(query || '') });
+        if (limit != null) q.set('limit', String(limit));
+        const data = await agentApi(`/api/socialV2/memes/search?${q.toString()}`, { headers: { 'x-agent-token': token } });
+        return { content: [{ type: 'text', text: serializeModelData(data) }] };
+      } catch (error) {
+        return { content: [{ type: 'text', text: `搜索表情失败：${error?.message ?? error}` }], isError: true };
+      }
+    }
+  );
+}
+
+if ((cfg.socialV2?.memeBackend || 'astrbot') === 'astrbot' && cfg.socialV2?.memes?.enabled !== false && cfg.socialV2?.tools?.memesCollect !== false) {
+  server.tool(
+    'qq_collect_meme',
+    '把当前会话里别人发的一张图片/表情收进本地表情图库（原图保存，不改 QQ 收藏）。messageId 用 qq_get_recent_messages / qq_get_unread_messages 返回的 messageId 或 seq；可附一句 note 和标签，方便以后选图。不要频繁收图。',
+    {
+      key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
+      token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
+      messageId: z.union([z.number(), z.string()]).describe('要收的那条消息的 messageId 或 seq'),
+      note: z.string().optional().describe('可选：这张图表达什么/什么时候用'),
+      tags: z.array(z.string()).optional().describe('可选标签，例如 ["无语","猫"]')
+    },
+    async ({ key, token, messageId, note, tags }) => {
+      try {
+        const data = await agentApi('/api/socialV2/memes/collect', {
+          method: 'POST',
+          headers: { 'x-agent-token': token },
+          body: JSON.stringify({ key, messageId: String(messageId), note, tags })
+        });
+        return { content: [{ type: 'text', text: serializeModelData(data) }] };
+      } catch (error) {
+        return { content: [{ type: 'text', text: `收进图库失败：${error?.message ?? error}` }], isError: true };
+      }
+    }
+  );
+}
+
+if ((cfg.socialV2?.memeBackend || 'astrbot') === 'astrbot' && cfg.socialV2?.memes?.enabled !== false && cfg.socialV2?.tools?.memesSend !== false) {
+  server.tool(
+    'qq_send_meme',
+    '从本地表情图库发一张表情。memeId 用 qq_search_memes 返回的编号（如 "#01"）或 sha256。一条消息只能是一张表情，不能在同一气泡里附带文字；想说的话先用 qq_send_message / qq_reply 单独发。需要引用/点名时可用 replyToMessageId / atUserId。',
+    {
+      key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
+      token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
+      memeId: z.string().describe('图库编号（#01）或 sha256/引用'),
+      replyToMessageId: z.union([z.number(), z.string()]).optional().describe('要引用/回复的消息 id（非零整数，可为负数，可选）'),
+      atUserId: z.union([z.number(), z.string()]).optional().describe('要 @ 的群成员 QQ 号（群聊中可选，私聊不可用）')
+    },
+    async ({ key, token, memeId, replyToMessageId, atUserId }) => {
+      try {
+        const data = await agentApi('/api/socialV2/memes/send', {
+          method: 'POST',
+          headers: { 'x-agent-token': token },
+          body: JSON.stringify({ key, memeId: String(memeId), replyToMessageId, atUserId })
+        });
+        return { content: [{ type: 'text', text: serializeModelData(data) }] };
+      } catch (error) {
+        return { content: [{ type: 'text', text: `发送图库表情失败：${error?.message ?? error}` }], isError: true };
+      }
+    }
+  );
+}
+
+if ((cfg.socialV2?.memeBackend || 'astrbot') === 'astrbot' && cfg.socialV2?.memes?.enabled !== false && cfg.socialV2?.tools?.memesImage !== false) {
+  server.tool(
+    'qq_get_meme_image',
+    '查看本地图库某张表情的图片内容（视觉模型可看图）。不确定 captions/情绪是否准确时先用它确认，再决定发不发。memeId 用 qq_search_memes 返回的编号。',
+    {
+      key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
+      token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
+      memeId: z.string().describe('图库编号（#01）或 sha256')
+    },
+    async ({ key, token, memeId }) => {
+      try {
+        const q = new URLSearchParams({ key, memeId: String(memeId) });
+        const data = await agentApi(`/api/socialV2/memes/image?${q.toString()}`, { headers: { 'x-agent-token': token }, timeoutMs: 120000 });
+        if (!data?.image?.data || !data?.image?.mimeType) {
+          return { content: [{ type: 'text', text: `图库表情没有可返回的图片：${data?.error || '未知'}` }], isError: true };
+        }
+        return { content: [
+          { type: 'text', text: `图库表情 ${data.meme?.id || memeId}${data.meme?.caption ? `（${data.meme.caption}）` : ''}${data.note ? `\n${data.note}` : ''}` },
+          { type: 'image', mimeType: data.image.mimeType, data: data.image.data }
+        ] };
+      } catch (error) {
+        return { content: [{ type: 'text', text: `读取图库表情失败：${error?.message ?? error}` }], isError: true };
+      }
+    }
+  );
+}
+
+// ── dsh-meme 图库联动（搜索 / 发送 / 学习） ────────────────────────────────
+if (cfg.socialV2?.memeBackend === 'dshmeme' && cfg.socialV2?.dshMeme?.enabled !== false && cfg.socialV2?.tools?.dshMemeSearch !== false) {
+  server.tool(
+    'qq_dshmeme_search',
+    '搜索 dsh-meme 图库（DSH 设置→表情包里的图库），不是 QQ 收藏表情。按 query 搜描述/关键词/文件名，或按 tag 情绪桶（happy/angry/sad/shy/confused/daily）抽图。返回候选 id、所属图库、描述、tag；挑中后用 qq_dshmeme_send(memeId) 发。没有合适的就换关键词或纯文字，别硬发。',
     {
       key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
       token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
@@ -1104,7 +1271,7 @@ if (cfg.socialV2?.dshMeme?.enabled !== false && cfg.socialV2?.tools?.dshMemeSear
         if (query) q.set('query', String(query));
         if (tag) q.set('tag', String(tag));
         if (limit != null) q.set('limit', String(limit));
-        const data = await agentApi('/api/socialV2/memes/search?' + q.toString(), { headers: { 'x-agent-token': token } });
+        const data = await agentApi('/api/socialV2/dshmeme/search?' + q.toString(), { headers: { 'x-agent-token': token } });
         return { content: [{ type: 'text', text: serializeModelData(data) }] };
       } catch (error) {
         return { content: [{ type: 'text', text: '搜索 dsh-meme 失败：' + (error?.message ?? error) }], isError: true };
@@ -1113,20 +1280,20 @@ if (cfg.socialV2?.dshMeme?.enabled !== false && cfg.socialV2?.tools?.dshMemeSear
   );
 }
 
-if (cfg.socialV2?.dshMeme?.enabled !== false && cfg.socialV2?.tools?.dshMemeSend !== false) {
+if (cfg.socialV2?.memeBackend === 'dshmeme' && cfg.socialV2?.dshMeme?.enabled !== false && cfg.socialV2?.tools?.dshMemeSend !== false) {
   server.tool(
-    'qq_send_meme',
-    '从 dsh-meme 图库发一张图到当前 QQ 会话。memeId 用 qq_search_memes 返回的 id。一条消息只能一张，不能在同一气泡附带文字；想说的话先用 qq_send_message/qq_reply 单独发。可传 replyToMessageId / atUserId（群聊）。',
+    'qq_dshmeme_send',
+    '从 dsh-meme 图库发一张图到当前 QQ 会话。memeId 用 qq_dshmeme_search 返回的 id。一条消息只能一张，不能在同一气泡附带文字；想说的话先用 qq_send_message/qq_reply 单独发。可传 replyToMessageId / atUserId（群聊）。',
     {
       key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
       token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
-      memeId: z.string().describe('qq_search_memes 返回的 id'),
+      memeId: z.string().describe('qq_dshmeme_search 返回的 id'),
       replyToMessageId: z.union([z.number(), z.string()]).optional().describe('要引用/回复的消息 id（非零整数，可为负数，可选）'),
       atUserId: z.union([z.number(), z.string()]).optional().describe('要 @ 的群成员 QQ 号（群聊中可选，私聊不可用）')
     },
     async ({ key, token, memeId, replyToMessageId, atUserId }) => {
       try {
-        const data = await agentApi('/api/socialV2/memes/send', {
+        const data = await agentApi('/api/socialV2/dshmeme/send', {
           method: 'POST',
           headers: { 'x-agent-token': token },
           body: JSON.stringify({ key, memeId: String(memeId), replyToMessageId, atUserId })
@@ -1139,9 +1306,9 @@ if (cfg.socialV2?.dshMeme?.enabled !== false && cfg.socialV2?.tools?.dshMemeSend
   );
 }
 
-if (cfg.socialV2?.dshMeme?.enabled !== false && cfg.socialV2?.tools?.dshMemeLearn !== false) {
+if (cfg.socialV2?.memeBackend === 'dshmeme' && cfg.socialV2?.dshMeme?.enabled !== false && cfg.socialV2?.tools?.dshMemeLearn !== false) {
   server.tool(
-    'qq_learn_meme',
+    'qq_dshmeme_learn',
     '把当前会话里别人发的一张图片/表情收进 dsh-meme 的「我的收藏」图库。messageId 用 qq_get_recent_messages / qq_get_unread_messages 返回的 messageId 或 seq；可给出 tag、caption、keywords，方便以后检索。不要频繁收图。',
     {
       key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
@@ -1153,7 +1320,7 @@ if (cfg.socialV2?.dshMeme?.enabled !== false && cfg.socialV2?.tools?.dshMemeLear
     },
     async ({ key, token, messageId, tag, caption, keywords }) => {
       try {
-        const data = await agentApi('/api/socialV2/memes/learn', {
+        const data = await agentApi('/api/socialV2/dshmeme/learn', {
           method: 'POST',
           headers: { 'x-agent-token': token },
           body: JSON.stringify({ key, messageId: String(messageId), tag, caption, keywords })
@@ -1249,7 +1416,7 @@ if (cfg.socialV2?.tools?.getSelfImage !== false) {
   );
 }
 
-if (cfg.socialV2?.sticker?.enabled !== false && cfg.socialV2?.tools?.stickerNote !== false) {
+if (cfg.socialV2?.memeBackend === 'qq' && cfg.socialV2?.sticker?.enabled !== false && cfg.socialV2?.tools?.stickerNote !== false) {
   server.tool(
     'qq_sticker_note',
     '给一个收藏表情记录你自己的理解/备注/标签/用法，供以后选择表情时参考。这是本地记忆，不会修改 QQ 账号的官方备注；适合对没有备注的表情看图后记住含义。',
@@ -1280,7 +1447,7 @@ if (cfg.socialV2?.sticker?.enabled !== false && cfg.socialV2?.tools?.stickerNote
   );
 }
 
-if (cfg.socialV2?.sticker?.enabled !== false && cfg.socialV2?.tools?.setStickerRemark !== false) {
+if (cfg.socialV2?.memeBackend === 'qq' && cfg.socialV2?.sticker?.enabled !== false && cfg.socialV2?.tools?.setStickerRemark !== false) {
   server.tool(
     'qq_set_sticker_remark',
     '修改 QQ 账号里收藏表情的官方备注（desc）。这是写操作，会直接影响 QQ 账号的表情备注；仅在管理员明确允许（socialV2.tools.setStickerRemark=true）时可用。一般优先用 qq_sticker_note 记录自己的理解，不要随意改官方备注。',

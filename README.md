@@ -53,7 +53,8 @@
 | 跨群协作 | 默认关闭；有向授权，只给统计不给内容 | 同上 |
 | 单一运行链路 | 只保留 `reserved2` 二代仿真：删掉 chat / closed-agent / 一代仿真三套模式、审批与 TOTP 管理面 | 本 README |
 | QQ 提示词 | 控制台只有一个「QQ 提示词」页：编辑整套行为提示词、随时恢复默认预设；人设由 harness 全局提示词提供 | 本 README |
-| dsh-meme 联动 | 直接使用 DSH 的 dsh-meme 图库：AI 用 `qq_search_memes` 搜描述/情绪、`qq_send_meme` 发图、`qq_learn_meme` 收图；控制台显示连接状态并可打开图库面板 | [CONFIGURATION.md](docs/guides/CONFIGURATION.md) |
+| dsh-meme 联动 | 直接使用 DSH 的 dsh-meme 图库：AI 用 `qq_dshmeme_search` 搜描述/情绪、`qq_dshmeme_send` 发图、`qq_dshmeme_learn` 收图；控制台显示连接状态并可打开图库面板 | [CONFIGURATION.md](docs/guides/CONFIGURATION.md) |
+| 三套表情链路 | 一次只启用一套：AstrBot 本地图库/远程包（默认）、QQ 收藏、DSH dsh-meme；切换后只注册当前链路工具，三套图库不互通，控制台可选 | [CONFIGURATION.md](docs/guides/CONFIGURATION.md) |
 | 大图与动图 | 过大图片不再直接丢弃：sharp/WebP 自适应压缩；动图默认抽帧拼成 3×2 网格（可选多帧），单条预算 8MB / 8 张，单张 1MB | [CONFIGURATION.md](docs/guides/CONFIGURATION.md) |
 | 控制台选模型 | 提供方 / 模型 / 思考强度三个联动下拉，选项来自 DSH 模型目录，保存即生效；第三方提供方提示隐私、不能看图的模型自动把图片转文字 | [CONFIGURATION.md](docs/guides/CONFIGURATION.md) |
 | 引用合并转发（v1.0.3） | 引用一条较早的合并转发时不再卡住整条消息；AI 能打开引用里的转发（含嵌套），读取结果缓存 | [CHANGELOG.md](CHANGELOG.md) |

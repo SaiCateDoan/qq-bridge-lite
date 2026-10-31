@@ -86,6 +86,20 @@ AI **收藏**群友的表情、**发送**收藏表情时，桥接会先自己下
 - **不影响图片识别**：把聊天图片 / 表情图交给模型看（含 `qq_get_sticker_image`）用的是另一个配置 `socialV2.media.maxBytes`（上游 r4 引入，默认 8MB，范围 256KB～20MB；同组还有 `maxPixels` 默认 64MP、`maxCount` 默认 5 张）。
 - 直连 SnowLuma（不经接口平台）时，SnowLuma 自身对单条消息的大小限制没有实测过；遇到发送失败可以先调小这个值。
 
+## `socialV2.memeBackend` —— 表情链路选择（一次只启用一套）
+
+| 值 | 链路 | 工具 |
+| --- | --- | --- |
+| `astrbot`（默认） | 本地 AstrBot 图库 + 远程表情包 | `qq_search_memes` / `qq_search_meme_packs` / `qq_download_meme_pack` / `qq_collect_meme` / `qq_send_meme` / `qq_get_meme_image` |
+| `qq` | QQ 收藏表情 | `qq_list_stickers` / `qq_get_sticker_image` / `qq_send_sticker` / `qq_collect_sticker` / `qq_sticker_note` / `qq_set_sticker_remark` |
+| `dshmeme` | DSH dsh-meme 图库 | `qq_dshmeme_search` / `qq_dshmeme_send` / `qq_dshmeme_learn` |
+
+三套数据完全隔离，不互相导入。控制台「二代仿真 → 表情链路」保存后，桥接立即按新链路校验接口；MCP 工具清单在 **重启 DSH** 后才会隐藏其它链路。
+
+## `socialV2.memes` —— AstrBot 本地图库 / 远程包
+
+默认目录 `state/memes/`；AI 可收聊天图、按描述/情绪检索本地，也可检索 AstrBot 社区索引的「包」（描述 + 封面）后异步下载。字段：`enabled` / `dir` / `remoteUrl` / `maxBytes` / `maxEntries` / `promptMax` / `packMaxImages` / `packConcurrency` / `packNotify`。
+
 ## `socialV2.dshMeme` —— 与 DSH 的 dsh-meme 图库联动
 
 qq-bridge 不自己维护表情图库，直接使用 DSH 插件 **dsh-meme** 的图库、开关和元数据。桥接通过 DSH Web 的 `/dsh-memes-api`（只回环）读取候选，再从 `/dsh-memes/<pack>/<path>` 取原图发给 QQ。
@@ -98,9 +112,9 @@ qq-bridge 不自己维护表情图库，直接使用 DSH 插件 **dsh-meme** 的
 
 AI 工具：
 
-- `qq_search_memes(query?, tag?, limit?)`：按描述/关键词/情绪桶搜 dsh-meme 图库；返回候选 id、图库、caption、tag。
-- `qq_send_meme(memeId, replyToMessageId?, atUserId?)`：把候选下载成字节，走原有 QQ 白名单/限流/发送队列；一条一张，不带文字。
-- `qq_learn_meme(messageId, tag?, caption?, keywords?)`：把当前会话的图片上传到 dsh-meme 的「我的收藏」。
+- `qq_dshmeme_search(query?, tag?, limit?)`：按描述/关键词/情绪桶搜 dsh-meme 图库；返回候选 id、图库、caption、tag。
+- `qq_dshmeme_send(memeId, replyToMessageId?, atUserId?)`：把候选下载成字节，走原有 QQ 白名单/限流/发送队列；一条一张，不带文字。
+- `qq_dshmeme_learn(messageId, tag?, caption?, keywords?)`：把当前会话的图片上传到 dsh-meme 的「我的收藏」。
 
 图库管理、启用哪些图库、发图尺寸等仍在 **DSH 设置 → 表情包**；qq-bridge 控制台「二代仿真」里会显示连接状态和「打开 dsh-meme 图库面板」。
 

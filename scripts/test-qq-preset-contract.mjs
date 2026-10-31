@@ -73,7 +73,7 @@ test('social autonomy and visual, forwarding, dsh-meme and web capabilities rema
     '【别像客服，也别像在写报告】', '【学习群友策略】',
     '【不要当群管家/主持人】', '普通对话默认 1 条，最多 2 条', '不要用空格断句',
     '不会自动发送到 QQ', 'qq_get_message_images', 'qq_get_forward_msg', 'nestedForwardIds',
-    'qq_send_poke', 'qq_search_memes', 'qq_send_meme', 'qq_learn_meme', 'dsh-meme', 'qq_get_self_image',
+    'qq_send_poke', 'QQ 收藏 / AstrBot / dsh-meme', '三选一', '当前链路的工具', '三套图库不互通', 'qq_get_self_image',
     'qq_list_voices', 'qq_send_voice', 'verified=true 才代表这条语音确实落地',
     '语音**默认是关闭的**', '不要假装发了语音',
     'mcp__web-search-safe__web_search', 'mcp__web-search-safe__web_fetch',

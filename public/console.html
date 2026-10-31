@@ -1813,6 +1813,15 @@ button:active:not(:disabled) {
   color:var(--muted-soft);
   background:none
 }
+.meme-pack-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+    .meme-pack-card { border: 1px solid var(--line, #2a3140); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 6px; background: var(--panel, rgba(255,255,255,.02)); }
+    .meme-pack-card img { width: 100%; height: 130px; object-fit: cover; border-radius: 8px; background: #111; }
+    .meme-pack-card h4 { margin: 0; font-size: 14px; }
+    .meme-pack-card p { margin: 0; font-size: 12px; color: var(--muted, #9aa4b2); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    .meme-pack-card .meta { font-size: 11px; }
+    .meme-pack-card .row { margin-top: auto; }
+    .meme-pack-progress { height: 5px; background: #222a38; border-radius: 4px; overflow: hidden; }
+    .meme-pack-progress i { display: block; height: 100%; background: #6aa9ff; width: 0; }
 </style>
 </head>
 <body>
@@ -1827,6 +1836,7 @@ button:active:not(:disabled) {
       <button data-view="prompt" class="nav-item"><span class="nav-icon" aria-hidden="true">✎</span>QQ 提示词</button>
       <div class="nav-label">聊天行为</div>
       <button data-view="social-v2" class="nav-item"><span class="nav-icon" aria-hidden="true">◈</span>二代仿真<span class="nav-note">V2</span></button>
+      <button data-view="memes" class="nav-item"><span class="nav-icon" aria-hidden="true">☺</span>表情图库</button>
       <button data-view="slang" class="nav-item"><span class="nav-icon" aria-hidden="true">▤</span>黑话词库</button>
       <div class="nav-label">管理</div>
       <button data-view="usage" class="nav-item"><span class="nav-icon" aria-hidden="true">◧</span>令牌与花费</button>
@@ -1889,6 +1899,15 @@ button:active:not(:disabled) {
       <div class="meta">配置保存后写入 config.json 并热更新；工具开关决定 AI 能调用哪些工具。已接入开关的工具在<b>重启 DSH 后</b>会从工具清单里彻底消失（少一份 schema 就少一份每次请求的 token）；发送类等跨模式共用的工具只在调用时被桥接拒绝，清单不变。</div>
 
       <div class="row" style="margin-top:10px">
+        <label style="flex:1">表情链路（一次只启用一套）</label>
+        <select id="v2MemeBackend" style="max-width:220px">
+          <option value="astrbot">AstrBot 本地图库 + 远程包</option>
+          <option value="dshmeme">dsh-meme 图库</option>
+          <option value="qq">QQ 收藏表情</option>
+        </select>
+        <span class="meta" style="flex:2">切换后保存，重启 DSH 才会隐藏其他链路的工具；三套图库不互通。</span>
+      </div>
+      <div class="row" style="margin-top:10px">
         <label style="flex:1">启用二代模式</label><input type="checkbox" id="v2Enabled" style="width:auto">
         <label style="flex:1">agentPreset</label><input type="text" id="v2AgentPreset" placeholder="qq-chat-v2" style="max-width:200px">
       </div>
@@ -1929,21 +1948,27 @@ button:active:not(:disabled) {
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="memory"> <span><b>qq_memory_append / qq_memory_query</b><span class="meta">轻量记忆：话题/想说的话/群友印象</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="slangQuery"> <span><b>qq_slang_query</b><span class="meta">查询已确认黑话/梗/网络表达</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="slangSubmit"> <span><b>qq_slang_submit</b><span class="meta">AI 提交陌生词/黑话给管理员筛选</span></span></label>
-        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="listStickers"> <span><b>qq_list_stickers</b><span class="meta">查看/搜索 QQ 收藏表情（含备注和本地笔记）</span></span></label>
-        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="getStickerImage"> <span><b>qq_get_sticker_image</b><span class="meta">看图理解没有备注的收藏表情</span></span></label>
-        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="sendSticker"> <span><b>qq_send_sticker</b><span class="meta">发送收藏表情（一条消息只能一张，不能带文字）</span></span></label>
-        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="collectSticker"> <span><b>qq_collect_sticker</b><span class="meta">AI 偶尔收藏别人发的表情并写简短备注</span></span></label>
-        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="dshMemeSearch"> <span><b>qq_search_memes</b><span class="meta">搜索 dsh-meme 图库（描述/情绪）</span></span></label>
-        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="dshMemeSend"> <span><b>qq_send_meme</b><span class="meta">从 dsh-meme 图库发一张图</span></span></label>
-        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="dshMemeLearn"> <span><b>qq_learn_meme</b><span class="meta">把聊天图片收进 dsh-meme 图库</span></span></label>
+        <label class="v2-tool-item"><input type="checkbox" data-meme-backend="qq" data-v2-tool="listStickers"> <span><b>qq_list_stickers</b><span class="meta">查看/搜索 QQ 收藏表情（含备注和本地笔记）</span></span></label>
+        <label class="v2-tool-item"><input type="checkbox" data-meme-backend="qq" data-v2-tool="getStickerImage"> <span><b>qq_get_sticker_image</b><span class="meta">看图理解没有备注的收藏表情</span></span></label>
+        <label class="v2-tool-item"><input type="checkbox" data-meme-backend="qq" data-v2-tool="sendSticker"> <span><b>qq_send_sticker</b><span class="meta">发送收藏表情（一条消息只能一张，不能带文字）</span></span></label>
+        <label class="v2-tool-item"><input type="checkbox" data-meme-backend="qq" data-v2-tool="collectSticker"> <span><b>qq_collect_sticker</b><span class="meta">AI 偶尔收藏别人发的表情并写简短备注</span></span></label>
+        <label class="v2-tool-item" data-meme-backend="astrbot"><input type="checkbox" data-v2-tool="memesSearch"> <span><b>qq_search_memes</b><span class="meta">搜 AstrBot 本地图库/扁平远程</span></span></label>
+        <label class="v2-tool-item" data-meme-backend="astrbot"><input type="checkbox" data-v2-tool="memesPacks"> <span><b>qq_search_meme_packs</b><span class="meta">搜 AstrBot 远程表情包</span></span></label>
+        <label class="v2-tool-item" data-meme-backend="astrbot"><input type="checkbox" data-v2-tool="memesPackDownload"> <span><b>qq_download_meme_pack</b><span class="meta">后台下载远程表情包</span></span></label>
+        <label class="v2-tool-item" data-meme-backend="astrbot"><input type="checkbox" data-v2-tool="memesCollect"> <span><b>qq_collect_meme</b><span class="meta">从聊天收图进 AstrBot 图库</span></span></label>
+        <label class="v2-tool-item" data-meme-backend="astrbot"><input type="checkbox" data-v2-tool="memesSend"> <span><b>qq_send_meme</b><span class="meta">发 AstrBot 图库图片</span></span></label>
+        <label class="v2-tool-item" data-meme-backend="astrbot"><input type="checkbox" data-v2-tool="memesImage"> <span><b>qq_get_meme_image</b><span class="meta">查看 AstrBot 图库图片</span></span></label>
+        <label class="v2-tool-item"><input type="checkbox" data-meme-backend="dshmeme" data-v2-tool="dshMemeSearch"> <span><b>qq_dshmeme_search</b><span class="meta">搜索 dsh-meme 图库（描述/情绪）</span></span></label>
+        <label class="v2-tool-item"><input type="checkbox" data-meme-backend="dshmeme" data-v2-tool="dshMemeSend"> <span><b>qq_dshmeme_send</b><span class="meta">从 dsh-meme 图库发一张图</span></span></label>
+        <label class="v2-tool-item"><input type="checkbox" data-meme-backend="dshmeme" data-v2-tool="dshMemeLearn"> <span><b>qq_dshmeme_learn</b><span class="meta">把聊天图片收进 dsh-meme 图库</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="personProfile"> <span><b>qq_get_person / qq_note_person</b><span class="meta">按 QQ 号查看/记录人物档案（按共享策略过滤可见范围）</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="requestMode"> <span><b>qq_request_mode_change</b><span class="meta">只在管理员私聊里登记模式切换申请；不能执行、不能确认</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="crossGroup"> <span><b>qq_cross_group_query</b><span class="meta">跨群受控查询（还需 crossGroup.enabled 与链接授权）</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="ownerGroupAccess"> <span><b>qq_owner_peek_group / qq_owner_group_rule</b><span class="meta">管理员私聊里只读查看白名单群的消息和记忆，并给群设定长期规则（由桥接写进群会话记忆、每次唤醒注入；默认关闭，改动后需重启 DSH）</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="ownerRelay"> <span><b>qq_ask_group_session</b><span class="meta">管理员私聊里托付某个白名单群的会话去群里说话（默认关闭；由群会话自己组织语言发言，改动后需重启 DSH）</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="getSelfImage"> <span><b>qq_get_self_image</b><span class="meta">查看自己的默认 Q 版形象图片</span></span></label>
-        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="stickerNote"> <span><b>qq_sticker_note</b><span class="meta">给表情记录本地含义/标签/用法</span></span></label>
-        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="setStickerRemark"> <span><b>qq_set_sticker_remark</b><span class="meta">修改 QQ 官方表情备注（默认禁用，慎用）</span></span></label>
+        <label class="v2-tool-item"><input type="checkbox" data-meme-backend="qq" data-v2-tool="stickerNote"> <span><b>qq_sticker_note</b><span class="meta">给表情记录本地含义/标签/用法</span></span></label>
+        <label class="v2-tool-item"><input type="checkbox" data-meme-backend="qq" data-v2-tool="setStickerRemark"> <span><b>qq_set_sticker_remark</b><span class="meta">修改 QQ 官方表情备注（默认禁用，慎用）</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="sendVoice"> <span><b>qq_send_voice / qq_list_voices</b><span class="meta">发送语音条（只能发语音库里的音频；偶然而为的强表达）</span></span></label>
       </div>
       <div class="meta" style="margin-top:6px">二代黑话学习：AI 可用 <code>qq_slang_submit</code> 提交陌生词，也可由桥接自动提取；管理员在「黑话词库」页面筛选确认后，词条会自动写入黑话提示词并注入 <code>qq_get_prompt</code> 与后续唤醒。</div>
@@ -2080,7 +2105,7 @@ button:active:not(:disabled) {
       </div>
 
       </div></details>
-<details class="settings-group"><summary>表情包参数（sticker：QQ 收藏表情体系）</summary><div class="settings-content">
+<details class="settings-group" data-meme-backend="qq"><summary>表情包参数（sticker：QQ 收藏表情体系）</summary><div class="settings-content">
       <div class="row">
         <label style="flex:1">启用表情包体系</label><input type="checkbox" id="v2StickerEnabled" style="width:auto">
         <label style="flex:1">同步缓存 TTL（秒）</label><input type="number" id="v2StickerSyncTtlSec" min="1" style="width:90px">
@@ -2102,11 +2127,11 @@ button:active:not(:disabled) {
       </div>
 
       </div></details>
-<details class="settings-group"><summary>dsh-meme 图库联动（推荐）</summary><div class="settings-content">
+<details class="settings-group" data-meme-backend="dshmeme"><summary>dsh-meme 图库联动</summary><div class="settings-content">
       <div id="dshMemeStatus" class="meta">正在连接 dsh-meme…</div>
       <div class="row" style="margin-top:8px">
         <a id="dshMemePanelLink" class="button small" target="_blank" rel="noopener" hidden>打开 dsh-meme 图库面板 ↗</a>
-        <span class="meta" style="flex:2">AI 用 <code>qq_search_memes</code> 搜图、<code>qq_send_meme</code> 发图、<code>qq_learn_meme</code> 收图；图库管理在 DSH 设置→表情包。</span>
+        <span class="meta" style="flex:2">AI 用 <code>qq_dshmeme_search</code> 搜图、<code>qq_dshmeme_send</code> 发图、<code>qq_dshmeme_learn</code> 收图；图库管理在 DSH 设置→表情包。</span>
       </div>
       </div></details>
 <details class="settings-group"><summary>上下文参数（recent / unread / contextWindow）</summary><div class="settings-content">
@@ -2204,6 +2229,46 @@ button:active:not(:disabled) {
       <div class="meta" style="margin-top:4px">修改上面任意推荐/默认参数后，必须点这个按钮才会持久化；保存后会自动应用到仍使用默认唤醒配置的会话，重启后仍然保留。</div>
 
       </div></section>
+<section id="section-memes" data-page="memes" class="card span-all">
+      <h2>本地表情图库</h2>
+      <div class="meta">图库目录：<code id="memeRoot">读取中…</code>。图片按内容哈希保存；可以直接往根目录或 <code>inbox/</code> 丢图片，点「刷新图库」即可收进索引。索引损坏时会先保留现场、尝试备份，最后从图片文件重建。</div>
+      <div class="overview-summary" id="memeSummary">
+        <div class="metric"><span>可用表情</span><strong id="memeCount">—</strong><small>可发送</small></div>
+        <div class="metric"><span>图库大小</span><strong id="memeBytes">—</strong><small>原图总字节</small></div>
+        <div class="metric"><span>分类 / 情绪</span><strong id="memeCats">—</strong><small>有标注的条目</small></div>
+        <div class="metric"><span>损坏 / 缺失</span><strong id="memeBroken">—</strong><small>自动跳过，不影响其它图</small></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="memeRefresh" class="small">刷新图库</button>
+        <button id="memeOpen" class="small">打开本地文件夹</button>
+        <span class="meta" id="memeMsg"></span>
+      </div>
+      <div class="meta" id="memeRecovery" style="margin-top:6px"></div>
+
+      <h3>图库地址（可选）</h3>
+      <div class="row">
+        <input id="memeRemoteUrl" type="url" placeholder="https://…/community-index.json" style="flex:1;min-width:260px" autocomplete="off">
+        <button id="memeSaveUrl" class="small">保存地址</button>
+        <button id="memeSyncRemote" class="small">从该地址导入</button>
+      </div>
+      <div class="meta">这里可以填 AstrBot 社区索引（顶层 <code>packs[]</code>，推荐，下面的「远程表情包」会用它检索/下载），也可以填旧的扁平图片清单（JSON 数组或 <code>{memes/images/items: [...]}</code>）。「从该地址导入」只处理扁平清单；包下载请用「远程表情包」。</div>
+
+      <h3>远程表情包 <span class="meta" id="memePackNote"></span></h3>
+      <div class="row">
+        <input id="memePackSearch" placeholder="搜表情包：角色 / 风格 / 情绪，例如「猫 卖萌」" style="flex:1;min-width:240px">
+        <button id="memePackSearchBtn" class="small">检索表情包</button>
+        <button id="memePackJobsBtn" class="small">刷新进度</button>
+      </div>
+      <div class="meta">这里检索的是 AstrBot 社区索引里的「包」，不是单张图；下载是后台任务，完成后 AI 会收到通知，再在本地按图片描述检索。</div>
+      <div id="memePackList" class="meme-pack-list" style="margin-top:8px">还没有加载表情包目录。</div>
+
+      <h3>表情列表 <span class="meta" id="memeListNote"></span></h3>
+      <div class="row">
+        <input id="memeSearch" placeholder="搜索描述 / 标签 / 分类 / 情绪" style="flex:1;min-width:240px">
+        <button id="memeSearchBtn" class="small">搜索</button>
+      </div>
+      <div class="tool-log-table" id="memeList" style="margin-top:8px">加载中…</div>
+    </section>
 <section id="section-slang" data-page="slang" class="card span-all">
       <h2>群聊黑话 / 网络用语库</h2>
       <div class="meta">DSH 会从群聊中自动提取疑似黑话候选；二代仿真模式下 AI 也可用 <code>qq_slang_submit</code> 主动提交陌生词。候选可批量送 DSH 深度联网研究，研究结果回到控制台由你删改修正后转正；确认后的词条会写入“黑话提示词”，注入一代/二代 AI 的聊天上下文，成为 AI 可查询和使用的记忆。</div>
@@ -3026,6 +3091,8 @@ async function loadV2Config() {
     const r = await api('/api/socialV2/config');
     const c = r.config || {};
     document.getElementById('v2Enabled').checked = c.enabled !== false;
+  document.getElementById('v2MemeBackend').value = c.memeBackend || 'astrbot';
+  updateMemeBackendUI();
     document.getElementById('v2AgentPreset').value = c.agentPreset || '';
     document.getElementById('v2ProvideRecommendations').checked = c.provideRecommendations !== false;
     document.querySelectorAll('[data-v2-tool]').forEach(el => {
@@ -3101,10 +3168,19 @@ async function loadV2Config() {
   } catch {}
 }
 
+function updateMemeBackendUI() {
+  const backend = document.getElementById('v2MemeBackend').value;
+  document.querySelectorAll('[data-meme-backend]').forEach((el) => {
+    el.hidden = el.dataset.memeBackend !== backend;
+  });
+}
+document.getElementById('v2MemeBackend').addEventListener('change', updateMemeBackendUI);
+
 async function saveV2Config() {
   const tools = {};
   document.querySelectorAll('[data-v2-tool]').forEach(el => { tools[el.dataset.v2Tool] = el.checked; });
   const body = {
+    memeBackend: document.getElementById('v2MemeBackend').value,
     enabled: document.getElementById('v2Enabled').checked,
     agentPreset: document.getElementById('v2AgentPreset').value.trim(),
     provideRecommendations: document.getElementById('v2ProvideRecommendations').checked,
@@ -4028,6 +4104,195 @@ document.getElementById('slangResearch').addEventListener('click', async () => {
   const r = await api('/api/slang/research', 'POST', {});
   setSlangMsg(r.ok ? ('✅ 已触发研究 ' + r.count + ' 条') : ('❌ ' + (r.error || '失败')), r.ok);
 });
+function fmtMemeBytes(n) {
+  const v = Number(n) || 0;
+  if (v < 1024) return v + ' B';
+  if (v < 1024 * 1024) return (v / 1024).toFixed(1) + ' KB';
+  return (v / 1024 / 1024).toFixed(1) + ' MB';
+}
+function renderMemeStats(data) {
+  const st = data?.stats || {};
+  document.getElementById('memeRoot').textContent = data?.dir || '未知';
+  document.getElementById('memeCount').textContent = st.available ?? '—';
+  document.getElementById('memeBytes').textContent = fmtMemeBytes(st.totalBytes);
+  const cats = Object.keys(st.categories || {}).length;
+  const emos = Object.keys(st.emotions || {}).length;
+  document.getElementById('memeCats').textContent = `${cats} / ${emos}`;
+  document.getElementById('memeBroken').textContent = st.broken ?? '—';
+  document.getElementById('memeBroken').className = (st.broken || 0) > 0 ? 'err' : 'ok';
+  document.getElementById('memeRecovery').textContent = st.lastRecovery ? `最近恢复：${st.lastRecovery}` : '';
+  const input = document.getElementById('memeRemoteUrl');
+  if (input && document.activeElement !== input) input.value = data?.remoteUrl || '';
+  if (data?.enabled === false && data?.error) showConsoleToast(data.error);
+}
+function renderMemeList(data) {
+  const box = document.getElementById('memeList');
+  const entries = Array.isArray(data?.entries) ? data.entries : [];
+  document.getElementById('memeListNote').textContent = data ? `共 ${data.total ?? entries.length} 条` : '';
+  if (!entries.length) { box.textContent = '图库还是空的：可以往 inbox/ 丢图片，或用 qq_collect_meme 收图。'; return; }
+  const rows = entries.map((e) => `<tr>
+    <td><b>${esc(e.id)}</b></td>
+    <td>${esc([e.emotion, e.category].filter(Boolean).join(' / ') || '—')}</td>
+    <td>${esc(e.caption || e.tags?.join(' / ') || '（无说明）')}</td>
+    <td>${fmtMemeBytes(e.bytes)}</td>
+    <td>${e.useCount || 0}</td>
+    <td>${e.broken ? `<span class="err">${esc(e.brokenReason || '损坏')}</span>` : '正常'}</td>
+  </tr>`).join('');
+  box.innerHTML = `<table><thead><tr><th>编号</th><th>情绪 / 分类</th><th>描述</th><th>大小</th><th>用过</th><th>状态</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+let memePackPollTimer = null;
+function fmtPackJob(job) {
+  if (!job) return '';
+  if (job.status === 'installed') return '已安装 ' + (job.installedCount || 0) + ' 张';
+  if (job.status === 'done') return `完成：新增 ${job.downloaded || 0}，重复 ${job.duplicate || 0}，失败 ${job.failed || 0}`;
+  if (job.status === 'failed') return '失败：' + (job.error || '未知错误');
+  if (job.status === 'queued') return '排队中…';
+  if (job.status === 'planning') return '解析包…';
+  if (job.status === 'downloading') return `下载中 ${job.completed || 0}/${job.total || '?'}（失败 ${job.failed || 0}）`;
+  return job.status || '';
+}
+function renderMemePacks(data) {
+  const box = document.getElementById('memePackList');
+  const packs = Array.isArray(data?.packs) ? data.packs : [];
+  document.getElementById('memePackNote').textContent = data?.remoteUrl ? `共 ${packs.length} 个候选` : '先保存图库地址';
+  if (!packs.length) {
+    box.textContent = data?.remoteUrl ? '没有匹配的表情包。' : '先在上面的「图库地址」填 AstrBot 社区索引地址（例如 https://raw.githubusercontent.com/anka-afk/astrbot-meme-pack-index/main/community-index.json）。';
+    return;
+  }
+  box.innerHTML = packs.map((p) => {
+    const cover = p.previews?.[0];
+    const job = p.job;
+    const pct = job && job.total ? Math.min(100, Math.round((job.completed || 0) * 100 / job.total)) : 0;
+    return `<div class="meme-pack-card" data-pack-card="${esc(p.id)}">
+      ${cover ? `<img src="${esc(cover)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}
+      <h4>${esc(p.name)} <span class="meta">${esc(p.version || '')}</span></h4>
+      <p>${esc(p.description || '')}</p>
+      <div class="meta">${esc((p.tags || []).slice(0, 6).join(' · '))}</div>
+      <div class="meta">${p.installed ? `已安装 ${p.installedCount || 0} 张` : '未安装'}${job ? ' · ' + esc(fmtPackJob(job)) : ''}</div>
+      ${job && job.status === 'downloading' && job.total ? `<div class="meme-pack-progress"><i style="width:${pct}%"></i></div>` : ''}
+      <div class="row">
+        <button class="small" data-pack-download="${esc(p.id)}" data-pack-force="${p.installed ? '1' : '0'}" ${job && ['queued','planning','downloading'].includes(job.status) ? 'disabled' : ''}>${p.installed ? '重新下载' : '下载到本地'}</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+async function loadMemePacks(query = '', schedulePoll = true) {
+  const note = document.getElementById('memePackNote');
+  try {
+    const q = query ? '&query=' + encodeURIComponent(query) : '';
+    const data = await api('/api/memes/packs?limit=24' + q);
+    renderMemePacks(data);
+    if (!data.ok) note.textContent = data.error || '读取失败';
+    if (schedulePoll) pollMemePackJobs();
+  } catch (error) {
+    note.textContent = '读取表情包目录失败：' + (error?.message || error);
+  }
+}
+async function pollMemePackJobs() {
+  if (memePackPollTimer) { clearTimeout(memePackPollTimer); memePackPollTimer = null; }
+  try {
+    const data = await api('/api/memes/packs/jobs');
+    const jobs = Array.isArray(data?.jobs) ? data.jobs : [];
+    const active = jobs.filter((j) => ['queued', 'planning', 'downloading'].includes(j.status));
+    for (const job of jobs) {
+      const card = document.querySelector(`[data-pack-card="${CSS.escape(job.packId)}"]`);
+      if (!card) continue;
+      const meta = card.querySelector('.meta:last-of-type');
+      if (meta) meta.textContent = fmtPackJob(job);
+      let bar = card.querySelector('.meme-pack-progress i');
+      if (job.status === 'downloading' && job.total) {
+        if (!bar) {
+          const wrap = document.createElement('div');
+          wrap.className = 'meme-pack-progress';
+          wrap.innerHTML = '<i></i>';
+          const row = card.querySelector('.row');
+          card.insertBefore(wrap, row);
+          bar = wrap.querySelector('i');
+        }
+        bar.style.width = Math.min(100, Math.round((job.completed || 0) * 100 / job.total)) + '%';
+      }
+    }
+    if (active.length) memePackPollTimer = setTimeout(pollMemePackJobs, 2000);
+    else if (jobs.some((j) => j.status === 'done')) await loadMemePacks(document.getElementById('memePackSearch').value.trim(), false);
+  } catch {}
+}
+async function downloadMemePack(packId, force = false) {
+  const note = document.getElementById('memePackNote');
+  try {
+    const data = await api('/api/memes/packs/download', 'POST', { packId, force });
+    if (data.installed) note.textContent = '这个包已经安装过了';
+    else if (data.job) note.textContent = '已开始后台下载：' + fmtPackJob(data.job);
+    await pollMemePackJobs();
+  } catch (error) {
+    note.textContent = '开始下载失败：' + (error?.message || error);
+  }
+}
+document.getElementById('memePackSearchBtn').addEventListener('click', () => loadMemePacks(document.getElementById('memePackSearch').value.trim()));
+document.getElementById('memePackSearch').addEventListener('keydown', (event) => { if (event.key === 'Enter') loadMemePacks(document.getElementById('memePackSearch').value.trim()); });
+document.getElementById('memePackJobsBtn').addEventListener('click', pollMemePackJobs);
+document.getElementById('memePackList').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-pack-download]');
+  if (!button || button.disabled) return;
+  downloadMemePack(button.dataset.packDownload, button.dataset.packForce === '1');
+});
+
+async function loadMemes() {
+  const msg = document.getElementById('memeMsg');
+  try {
+    const data = await api('/api/memes/stats');
+    renderMemeStats(data);
+    if (data?.enabled === false) {
+      document.getElementById('memeList').textContent = data.error || '本地图库未启用';
+      return;
+    }
+    const query = document.getElementById('memeSearch').value.trim();
+    const list = await api('/api/memes/list?limit=100' + (query ? '&query=' + encodeURIComponent(query) : ''));
+    renderMemeList(list);
+    if (data.remoteUrl) await loadMemePacks(document.getElementById('memePackSearch').value.trim());
+    else renderMemePacks({ ok: true, packs: [], remoteUrl: '' });
+    if (msg) msg.textContent = '已刷新 ' + new Date().toLocaleTimeString('zh-CN', { hour12: false });
+  } catch (error) {
+    if (msg) msg.textContent = '读取失败：' + (error?.message || error);
+  }
+}
+document.getElementById('memeRefresh').addEventListener('click', async () => {
+  const msg = document.getElementById('memeMsg');
+  msg.textContent = '刷新中…';
+  try {
+    const r = await api('/api/memes/refresh', 'POST', {});
+    await loadMemes();
+    msg.textContent = `已刷新：新增 ${r.result?.added ?? 0}，修复 ${r.result?.repaired ?? 0}`;
+  } catch (error) { msg.textContent = '刷新失败：' + (error?.message || error); }
+});
+document.getElementById('memeOpen').addEventListener('click', async () => {
+  const msg = document.getElementById('memeMsg');
+  try {
+    const r = await api('/api/memes/open-folder', 'POST', {});
+    msg.textContent = '已请求打开：' + (r.dir || '');
+  } catch (error) { msg.textContent = '打开失败：' + (error?.message || error); }
+});
+document.getElementById('memeSaveUrl').addEventListener('click', async () => {
+  const msg = document.getElementById('memeMsg');
+  const url = document.getElementById('memeRemoteUrl').value.trim();
+  try {
+    await api('/api/memes/remote', 'POST', { url });
+    msg.textContent = url ? '图库地址已保存' : '已清空图库地址';
+    if (url) await loadMemePacks(''); else renderMemePacks({ ok: true, packs: [], remoteUrl: '' });
+  } catch (error) { msg.textContent = '保存失败：' + (error?.message || error); }
+});
+document.getElementById('memeSyncRemote').addEventListener('click', async () => {
+  const msg = document.getElementById('memeMsg');
+  const url = document.getElementById('memeRemoteUrl').value.trim();
+  msg.textContent = '导入中…';
+  try {
+    const r = await api('/api/memes/sync-remote', 'POST', { url });
+    await loadMemes();
+    msg.textContent = `导入完成：新增 ${r.added ?? 0}，重复 ${r.duplicate ?? 0}，失败 ${r.failed ?? 0}`;
+  } catch (error) { msg.textContent = '导入失败：' + (error?.message || error); }
+});
+document.getElementById('memeSearchBtn').addEventListener('click', loadMemes);
+document.getElementById('memeSearch').addEventListener('keydown', (event) => { if (event.key === 'Enter') loadMemes(); });
+
 function loadSlangConfig() {
   api('/api/slang').then(r => {
     const c = r.config || {};
@@ -4120,6 +4385,7 @@ const consolePages = {
   sessions: ['会话', '让每一段对话，都有迹可循。', '查看 QQ 与 DSH 的会话映射。'],
   prompt: ['QQ 提示词', '一套提示词，决定 AI 在 QQ 上怎么聊天。', '工具协议、群聊分寸、分条格式都在这里；可随时恢复默认预设。'],
   'social-v2': ['二代仿真', '自主参与，恰到好处。', '管理 AI 的工具、唤醒与发言节奏。展开需要调整的分组，修改后保存参数。'],
+  memes: ['表情图库', '让 AI 有自己的表情库。', 'AstrBot 本地图库与远程表情包；切换表情链路后只有当前链路的工具会注册。'],
   slang: ['黑话词库', '读懂群聊里的，言外之意。', '从候选到确认，让 AI 逐渐熟悉大家的表达习惯。'],
   usage: ['令牌与花费', '每一次思考，都算得清楚。', '实时查看 AI 的 token 消耗与花费，可下钻到每个群、每个好友、每一轮对话。'],
   access: ['访问与安全', '明确边界，安心连接。', '管理允许对话的对象、管理员权限与控制台访问凭证。'],
@@ -4153,6 +4419,7 @@ function setConsolePage(page, { updateHash = true, focus = false, target = '' } 
   closeConsoleSearch();
   // 语音库按需加载：进入二代仿真页时才探测（避免每次开控制台都压网关）。
   if (page === 'social-v2' && typeof loadVoiceLibrary === 'function') loadVoiceLibrary();
+  if (page === 'memes' && typeof loadMemes === 'function') loadMemes();
   if (page === 'social-v2' && typeof loadDshMemeStatus === 'function') loadDshMemeStatus();
   if (focus) {
     document.getElementById('mainContent').focus({ preventScroll: true });

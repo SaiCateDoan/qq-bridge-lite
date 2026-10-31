@@ -86,9 +86,10 @@ test('enabledPacks 为空表示全关，不回落到全部', async () => {
 test('唤醒提示优先引导 dsh-meme，不出现旧收藏工具', async () => {
   const h = await bridgeHarness();
   try {
+    h.cfg.socialV2.memeBackend = 'dshmeme';
     const text = h.buildWakePromptV2('group:456', 'test');
-    assert.match(text, /qq_search_memes/);
-    assert.match(text, /qq_send_meme/);
+    assert.match(text, /qq_dshmeme_search/);
+    assert.match(text, /qq_dshmeme_send/);
     assert.match(text, /dsh-meme/);
     assert.doesNotMatch(text, /qq_list_stickers/);
   } finally { await h.close(); }
