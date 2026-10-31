@@ -300,6 +300,7 @@ const TOOL_CONFIG_FLAGS = {
   qq_memory_clear: 'memory',
   qq_slang_query: 'slangQuery',
   qq_slang_submit: 'slangSubmit',
+  qq_speak: 'ttsSpeak',
   qq_send_voice: 'sendVoice',
   qq_list_voices: 'sendVoice',
   // 下面这些曾经漏登记。漏一个不是"多注册一个工具"那么轻：桥接那边按 `v2ToolEnabled(flag)`
@@ -1328,6 +1329,34 @@ if (cfg.socialV2?.memeBackend === 'dshmeme' && cfg.socialV2?.dshMeme?.enabled !=
         return { content: [{ type: 'text', text: serializeModelData(data) }] };
       } catch (error) {
         return { content: [{ type: 'text', text: '学习 dsh-meme 表情失败：' + (error?.message ?? error) }], isError: true };
+      }
+    }
+  );
+}
+
+// ── 本地 TTS（GPT-SoVITS）──────────────────────────────────────────────────
+if (cfg.socialV2?.tts?.enabled === true && cfg.socialV2?.tools?.ttsSpeak !== false) {
+  server.tool(
+    'qq_speak',
+    '用本地 GPT-SoVITS 把文字合成成 QQ 语音条，并发送到当前会话。语音条只能有一张语音，不能附带文字；想同时说话和发文字时，先用 qq_send_message / qq_reply 发文字，再单独调用 qq_speak，或只发语音。短句优先，语音生成需要时间；普通闲聊偶尔用，不要每条都发、不要连续刷语音。不要用 qq_send_voice（那是语音库里的旧音频）。返回 verified=true 表示已回读确认 record 段落地。',
+    {
+      key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
+      token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
+      text: z.string().describe('要合成并说出来的文字；建议 1~2 句、不要超过配置的 maxChars'),
+      verify: z.boolean().optional().describe('是否回读校验语音已落地，默认 true'),
+      readback: z.boolean().optional().describe('是否额外索取 QQ 转写文本（自己发的语音通常没有，默认 false）')
+    },
+    async ({ key, token, text, verify, readback }) => {
+      try {
+        const data = await agentApi('/api/socialV2/tts', {
+          method: 'POST',
+          headers: { 'x-agent-token': token },
+          body: JSON.stringify({ key, token, text: String(text), verify, readback: readback === true }),
+          timeoutMs: 180000
+        });
+        return { content: [{ type: 'text', text: serializeModelData(data) }] };
+      } catch (error) {
+        return { content: [{ type: 'text', text: `生成/发送语音失败：${error?.message ?? error}` }], isError: true };
       }
     }
   );

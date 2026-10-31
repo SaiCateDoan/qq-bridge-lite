@@ -38,10 +38,15 @@ ok('页面加载', page.status === 200 && html.includes('白名单 / 管理员')
 ok('dsh-meme 联动页', html.includes('id="dshMemeStatus"') && html.includes('id="dshMemePanelLink"') && html.includes('data-v2-tool="dshMemeSearch"'), '状态/面板/工具开关');
 ok('表情链路选择器', html.includes('id="v2MemeBackend"') && html.includes('data-meme-backend="astrbot"') && html.includes('data-meme-backend="qq"'), '三套链路');
 ok('AstrBot 图库页', html.includes('id="section-memes"') && html.includes('data-page="memes"'), '本地图库/远程包');
+ok('本地 TTS 设置', html.includes('id="v2TtsEnabled"') && html.includes('data-v2-tool="ttsSpeak"') && html.includes('id="v2TtsPreviewBtn"'), 'GPT-SoVITS 开关/试听');
 
 // 2. QQ 提示词（唯一一套）
 let r = await api('/api/memes/stats');
 ok('AstrBot 图库统计接口', r.body.ok === true || r.body.enabled === false, JSON.stringify({ ok: r.body.ok, error: r.body.error }));
+r = await api('/api/tts/status');
+ok('TTS 状态接口', r.body.ok === true && r.body.enabled === true && r.body.configured === true, JSON.stringify({ enabled: r.body.enabled, configured: r.body.configured, error: r.body.error }));
+r = await api('/api/tts/preview', 'POST', { text: '你好呀，我是达妮娅。' });
+ok('TTS 试听接口', r.body.ok === true && r.body.bytes > 0 && typeof r.body.dataBase64 === 'string', JSON.stringify({ ok: r.body.ok, bytes: r.body.bytes, error: r.body.error }));
 r = await api('/api/dsh-meme/status');
 ok('dsh-meme 状态接口', r.body.ok === true && typeof r.body.total === 'number', JSON.stringify({ ok: r.body.ok, total: r.body.total, error: r.body.error }));
 r = await api('/api/preset/sim-prompt');

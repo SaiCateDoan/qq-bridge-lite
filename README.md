@@ -32,7 +32,7 @@
 
 | 保留 | 移除 |
 | --- | --- |
-| `reserved2` 二代仿真：工具自主收发、唤醒/潜水、群聊记忆、黑话、表情、语音、合并转发 | `chat` / `reserved`（一代仿真）/ `closed-agent`（运维 Agent）三种模式 |
+| `reserved2` 二代仿真：工具自主收发、唤醒/潜水、群聊记忆、黑话、表情、GPT-SoVITS 语音、合并转发 | `chat` / `reserved`（一代仿真）/ `closed-agent`（运维 Agent）三种模式 |
 | 单套「QQ 提示词」+ 一键恢复默认 | owner 管理通道、L1~L3 权限分级、审批、TOTP、模式切换、`qq-mode-console` 插件 |
 | 控制台：总览 / 会话 / QQ 提示词 / 二代仿真 / 黑话 / 令牌 / 安全 / 运维 / 参考 | 人格卡 `roles/`、每轮注入、`/role` `/silent` 等命令 |
 | 人物库、群规、owner 私聊托付、接口平台、控制中心 | 一代社交状态机与自动转发（死代码已清） |
@@ -40,7 +40,7 @@
 - **人设不再由桥接注入**：AI 是谁由 harness 全局提示词（`dsh-context` 的 `promptSuffix`）提供，QQ 与 GUI 是同一个自己；桥接只负责 QQ 场景的行为规则。
 - **提示词只有一个来源**：`dsh/agent-presets/qq-chat-v2/agent.cordis.yml`。控制台保存会同步重生成 `plugins/qq-agent-presets/presets/qq-chat-v2.patch.yml`，**改完必须重启 DSH**；改坏了点「恢复默认预设」。
 - **从旧版升级**：重启 DSH → 从控制中心启动桥接 →（必要时）重置 QQ 会话。`config.json` 里残留的 `role` / `admin` / `social` / `socialV2.tools.requestMode` 会被忽略，可以手工删掉。
-- **回归**：`npm run test:audit`（53 个脚本；`test-platform` 偶发超时，单独重跑即过）。
+- **回归**：`npm run test:audit`（58 个脚本；`test-platform` 偶发超时，单独重跑即过）。
 
 | 新功能 | 一句话 | 文档 |
 | --- | --- | --- |
@@ -428,7 +428,7 @@ SnowLuma 同一个账号的 **HTTP token（默认 3000 端口）与 WebSocket to
 - agent 回复在回合结束时一次性发送（不做流式逐字转发）；回复超过 `socialV2.send.maxMessageChars`（默认 500 字，可用 `social.maxReplyChars` 调整）自动按句读/URL 边界分段
 - 图片及部分表情可以通过安全下载接入多模态模型；超大图会先压缩，动图会均匀抽帧成多张带序号的静态图。语音/视频以及确实拿不到图片字节的消息仍使用占位文本
 - **发**语音是支持的（独立工具的图形界面 / 命令行 / AI 工具，见 `docs/README.md` 的文档索引）；但**收**到的语音目前只显示占位文本，不做语音转写入上下文
-- **AI 发语音默认关闭**（`socialV2.voice.enabled` 与 `tools.sendVoice` 默认 `false`）：先把音频放进 `audio/`，再到控制台打开开关；你自己发语音不受这个开关影响
+- **AI 发语音默认关闭**（`socialV2.voice.enabled` 与 `tools.sendVoice` 默认 `false`）：先把音频放进 `audio/`，再到控制台打开开关；你自己发语音不受这个开关影响。另有 `qq_speak` 可接本地 GPT-SoVITS 做文字转语音，需在 `socialV2.tts` 单独启用
 - agent 的 Markdown 回复会转成纯文本（链接保留 `文字 (url)` 形式）
 - `@snowluma/sdk` 的 npm 发布版存在 ESM 扩展名 bug，本仓库通过 postinstall 补丁修复（见 `scripts/patch-snowluma-sdk.mjs`）
 

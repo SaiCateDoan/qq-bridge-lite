@@ -3,6 +3,21 @@
 本仓库（qq-bridge-enhanced）基于上游 [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge) `v0.2.0-r3`。
 上游更早的版本历史见 [docs/guides/DSH_020_ADAPTATION.md](docs/guides/DSH_020_ADAPTATION.md) 与上游 Release 页面。
 
+## v1.0.6 —— 2026-10-31
+
+**接入本地 GPT-SoVITS 语音输出**：AI 新增 `qq_speak(text)`，文字经本机 GPT-SoVITS `/tts` 合成 WAV，走现有 QQ `record` 语音条链路。
+
+### 变化
+- 新增 `src/tts-client.js`：只允许回环地址、校验 WAV 头/大小/超时，错误可读化。
+- 新增 `socialV2.tts`（API/参考音频/参考原话/语言/语速/字数/超时/音量/响度归一）。
+- 新增 MCP 工具 `qq_speak`，受 `socialV2.tools.ttsSpeak` 与 `socialV2.tts.enabled` 控制；语音条不附带文字。
+- 新增 `POST /api/socialV2/tts`（AI 通道，agent token + 白名单 + 语音限流）和 `POST /api/tts/preview`（控制台试听，不发 QQ）。
+- 控制台「二代仿真 → 本地 TTS（GPT-SoVITS）」可配置并试听；默认对 TTS 输出做 loudnorm，避免达妮娅原始音量过轻。
+- 预设新增 `qq_speak` 语音规则，同时保留 `qq_send_voice` 语音库默认关闭的说明。
+- 新增 `test-tts-client`，audit 58/58。
+
+### 本机部署
+- 当前音色：达妮娅（Dania）v2ProPlus；后藤一里模型/试听已按要求删除。
 ## v1.0.5 —— 2026-10-31
 
 **三套表情链路合并，一次只启用一套**：AstrBot 本地图库/远程包（默认）、QQ 收藏表情、DSH dsh-meme；切换后 MCP 只注册当前链路的工具，三套数据互不导入。

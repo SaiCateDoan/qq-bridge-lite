@@ -24,6 +24,7 @@ import { compactModelMessage, describeAge } from './qq-model-view.js';
 import { safeFetch, safeFetchBuffer, looksLikeImageBuffer } from './safe-fetch.js';
 import { hasImageCodec, prepareImage } from './media-compress.js';
 import { DshMemeClient } from './dsh-meme-client.js';
+import { GptSovitsClient } from './tts-client.js';
 import { MemeLibrary } from './meme-library.js';
 import { fetchPackIndex, planPackImages, packPreviewUrls } from './meme-packs.js';
 import { stickerMaxBytes } from './lib/sticker-limits.mjs';
@@ -742,6 +743,7 @@ function loadConfig() {
     personProfile: true,
     crossGroup: true,
     sendVoice: false,
+    ttsSpeak: false,
     // v0.4.2：管理员私聊托付群会话（默认关闭）
     ownerRelay: false,
     // 管理员私聊只读查看白名单群 + 给群设长期规则（默认关闭）
@@ -771,6 +773,27 @@ function loadConfig() {
     ffmpegPath: '',
     autoReadback: true,
     ...(cfg.socialV2?.voice ?? {})
+  };
+
+  // socialV2.tts：把文字交给本地 GPT-SoVITS 生成语音，再走现有 record 发送链路。
+  // refAudioPath 是 GPT-SoVITS API 所在机器上的路径；API 只允许回环地址。
+  cfg.socialV2.tts = {
+    enabled: false,
+    apiUrl: 'http://127.0.0.1:9880',
+    refAudioPath: '',
+    promptText: '',
+    promptLang: 'zh',
+    textLang: 'zh',
+    speedFactor: 1,
+    maxChars: 200,
+    timeoutMs: 120000,
+    maxBytes: 20 * 1024 * 1024,
+    maxSeconds: 60,
+    defaultVolume: 1,
+    loudness: 'normal',
+    normalize: true,
+    autoReadback: true,
+    ...(cfg.socialV2?.tts ?? {})
   };
 
   cfg.socialV2.memes = {
@@ -1450,6 +1473,55 @@ async function main() {
     };
   }
 
+  let ttsClient = null;
+  let ttsClientKey = '';
+
+  function ttsCfg() {
+    const t = cfg.socialV2?.tts ?? {};
+    return {
+      enabled: t.enabled === true,
+      apiUrl: String(t.apiUrl || 'http://127.0.0.1:9880').replace(/\/+$/, ''),
+      refAudioPath: String(t.refAudioPath || ''),
+      promptText: String(t.promptText || ''),
+      promptLang: String(t.promptLang || 'zh'),
+      textLang: String(t.textLang || 'zh'),
+      speedFactor: Number(t.speedFactor) > 0 ? Number(t.speedFactor) : 1,
+      maxChars: Number(t.maxChars) > 0 ? Math.min(2000, Math.round(Number(t.maxChars))) : 200,
+      timeoutMs: Number(t.timeoutMs) > 0 ? Math.round(Number(t.timeoutMs)) : 120000,
+      maxBytes: Number(t.maxBytes) > 0 ? Number(t.maxBytes) : 20 * 1024 * 1024,
+      maxSeconds: Number(t.maxSeconds) > 0 ? Number(t.maxSeconds) : 60,
+      defaultVolume: Number(t.defaultVolume) > 0 ? Number(t.defaultVolume) : 1,
+      loudness: t.loudness || 'normal',
+      normalize: t.normalize !== false,
+      autoReadback: t.autoReadback !== false
+    };
+  }
+
+  function ttsEnabled() {
+    const t = ttsCfg();
+    return t.enabled && !!t.refAudioPath && !!t.promptText;
+  }
+
+  function getTtsClient() {
+    const t = ttsCfg();
+    if (!ttsEnabled()) throw new Error('TTS 未启用或缺少参考音频/参考文本（socialV2.tts）');
+    const key = JSON.stringify([t.apiUrl, t.refAudioPath, t.promptText, t.promptLang, t.textLang, t.speedFactor, t.timeoutMs, t.maxBytes]);
+    if (!ttsClient || ttsClientKey !== key) {
+      ttsClient = new GptSovitsClient({
+        baseUrl: t.apiUrl,
+        refAudioPath: t.refAudioPath,
+        promptText: t.promptText,
+        promptLang: t.promptLang,
+        textLang: t.textLang,
+        speedFactor: t.speedFactor,
+        timeoutMs: t.timeoutMs,
+        maxBytes: t.maxBytes
+      });
+      ttsClientKey = key;
+    }
+    return ttsClient;
+  }
+
   function voiceLibrary() {
     const dir = voiceCfg().dir;
     const files = listAudioFiles(dir);
@@ -1788,6 +1860,64 @@ async function main() {
     const wantVerify = verify === true || (verify !== false && vc.autoReadback);
     const verification = wantVerify ? await verifyVoiceMessageSent(sent.messageId) : null;
     return { ...sent, key, file: resolved.path, via: resolved.via, verification, readback: readbackText };
+  }
+
+  /**
+   * AI 通道：文字 → 本地 GPT-SoVITS → 临时 WAV → 现有 record 发送链路。
+   * 语音条不能附带文字；需要文字时由 AI 另外调用 qq_send_message/qq_reply。
+   */
+  async function speakV2(key, input, { audio = null, verify = null, readback = false } = {}) {
+    const t = ttsCfg();
+    if (!t.enabled) throw new Error('TTS 语音功能已关闭（socialV2.tts.enabled=false）');
+    const value = String(input ?? '').trim();
+    if (!value) throw new Error('TTS 文本不能为空');
+    if (value.length > t.maxChars) throw new Error(`TTS 文本过长（${value.length} > ${t.maxChars} 字），请缩短或分段`);
+    voiceBudgetCheck(key, voiceCfg());
+    const synth = await getTtsClient().synthesize(value, { textLang: t.textLang, speedFactor: t.speedFactor, timeoutMs: t.timeoutMs });
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qq-tts-'));
+    const file = path.join(dir, 'speech.wav');
+    try {
+      fs.writeFileSync(file, synth.buffer);
+      const info = await inspectAudio(file, { maxBytes: t.maxBytes, maxSeconds: t.maxSeconds });
+      if (!info.ok) throw new Error(`TTS 音频不可发送：${info.error}`);
+      const sent = await sendVoiceV2(key, file, {
+        guard: true,
+        audit: true,
+        audio: {
+          volume: audio?.volume ?? t.defaultVolume,
+          normalize: audio?.normalize ?? t.normalize,
+          loudness: audio?.loudness ?? t.loudness
+        }
+      });
+      voiceBudgetCommit(key);
+      recordVoiceSentV2(key, sent, '[语音] TTS');
+      log(`[tts] ${key} 已发送语音（${value.length} 字，${sent.detail}, messageId=${sent.messageId ?? '?'}）`);
+      appendActivity(`${key} [tts] 发送语音（${value.length} 字，${sent.detail}）`);
+      const wantVerify = verify === true || (verify !== false && t.autoReadback);
+      const verification = wantVerify ? await verifyVoiceMessageSent(sent.messageId) : null;
+      let readbackText = null;
+      if (readback === true && sent.messageId) {
+        try {
+          const httpUrl = String(cfg.snowluma?.httpUrl || 'http://127.0.0.1:3000').replace(/\/+$/, '');
+          const res = await fetch(`${httpUrl}/fetch_ptt_text`, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              ...(cfg.snowluma?.accessToken ? { authorization: `Bearer ${cfg.snowluma.accessToken}` } : {})
+            },
+            body: JSON.stringify({ message_id: String(sent.messageId) }),
+            signal: AbortSignal.timeout(30000)
+          });
+          const body = await res.json().catch(() => ({}));
+          if (res.ok && body.status === 'ok' && body.retcode === 0) readbackText = body.data?.text ?? '';
+        } catch (error) {
+          log(`[tts] 语音转写回读失败（不影响已发送）：${error?.message ?? error}`);
+        }
+      }
+      return { ...sent, key, chars: value.length, tts: true, verification, readback: readbackText };
+    } finally {
+      try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+    }
   }
 
   // 发送一个收藏表情（按 emoji_id/url/md5 解析，发图片段）。
@@ -4661,8 +4791,28 @@ async function main() {
             const backend = String(merged.memeBackend || 'astrbot').trim().toLowerCase();
             merged.memeBackend = ['qq', 'astrbot', 'dshmeme'].includes(backend) ? backend : 'astrbot';
           }
+          if (body.tts && typeof body.tts === 'object' && !Array.isArray(body.tts)) {
+            merged.tts = { ...(current.tts ?? {}), ...body.tts };
+            merged.tts.enabled = merged.tts.enabled === true;
+            merged.tts.apiUrl = String(merged.tts.apiUrl ?? '').trim();
+            merged.tts.refAudioPath = String(merged.tts.refAudioPath ?? '').trim();
+            merged.tts.promptText = String(merged.tts.promptText ?? '').trim();
+            merged.tts.promptLang = String(merged.tts.promptLang ?? 'zh').trim() || 'zh';
+            merged.tts.textLang = String(merged.tts.textLang ?? 'zh').trim() || 'zh';
+            for (const [k, min, max, fallback] of [['maxChars', 1, 2000, 200], ['timeoutMs', 1000, 300000, 120000], ['maxSeconds', 1, 300, 60]]) {
+              const n = Number(merged.tts[k]);
+              merged.tts[k] = Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : fallback;
+            }
+            const speed = Number(merged.tts.speedFactor);
+            merged.tts.speedFactor = Number.isFinite(speed) && speed > 0 ? Math.min(2, Math.max(0.5, speed)) : 1;
+            const vol = Number(merged.tts.defaultVolume);
+            merged.tts.defaultVolume = Number.isFinite(vol) && vol > 0 ? Math.min(3, Math.max(0.1, vol)) : 1;
+            merged.tts.loudness = ['quiet', 'normal', 'loud'].includes(String(merged.tts.loudness)) ? String(merged.tts.loudness) : 'normal';
+            merged.tts.normalize = merged.tts.normalize !== false;
+            merged.tts.autoReadback = merged.tts.autoReadback !== false;
+          }
           // 子对象必须是非 null 对象；null/数组/基本类型会覆盖默认值导致工具开关被绕过，这里直接保留当前值。
-          for (const sub of ['tools', 'wake', 'send', 'wait', 'proactive', 'sticker', 'memes', 'dshMeme', 'feedback', 'context']) {
+          for (const sub of ['tools', 'wake', 'send', 'wait', 'proactive', 'sticker', 'memes', 'dshMeme', 'tts', 'feedback', 'context']) {
             if (body[sub] !== undefined && (body[sub] === null || typeof body[sub] !== 'object' || Array.isArray(body[sub]))) {
               merged[sub] = current[sub] ?? {};
             }
@@ -4672,7 +4822,7 @@ async function main() {
             merged.autoReplyCheckMs = Number.isFinite(n) ? Math.max(1000, Math.round(n)) : (current.autoReplyCheckMs ?? 30000);
           }
           // tools：只接受布尔开关
-          const toolFlags = ['getPrompt', 'getUnread', 'getRecent', 'socialState', 'sendGroup', 'sendPrivate', 'reply', 'sendBurst', 'sendMessage', 'waitMessages', 'feedback', 'getMyRecent', 'getMessageDetail', 'getActiveMembers', 'getGroupMembers', 'setWakeConfig', 'markRead', 'memory', 'slangQuery', 'slangSubmit', 'getImages', 'getForwardMsg', 'sendPoke', 'listStickers', 'getStickerImage', 'sendSticker', 'setStickerRemark', 'stickerNote', 'collectSticker', 'memesSearch', 'memesPacks', 'memesPackDownload', 'memesCollect', 'memesSend', 'memesImage', 'dshMemeSearch', 'dshMemeSend', 'dshMemeLearn', 'getSelfImage', 'personProfile', 'crossGroup', 'ownerRelay', 'ownerGroupAccess', 'sendVoice'];
+          const toolFlags = ['getPrompt', 'getUnread', 'getRecent', 'socialState', 'sendGroup', 'sendPrivate', 'reply', 'sendBurst', 'sendMessage', 'waitMessages', 'feedback', 'getMyRecent', 'getMessageDetail', 'getActiveMembers', 'getGroupMembers', 'setWakeConfig', 'markRead', 'memory', 'slangQuery', 'slangSubmit', 'getImages', 'getForwardMsg', 'sendPoke', 'ttsSpeak', 'listStickers', 'getStickerImage', 'sendSticker', 'setStickerRemark', 'stickerNote', 'collectSticker', 'memesSearch', 'memesPacks', 'memesPackDownload', 'memesCollect', 'memesSend', 'memesImage', 'dshMemeSearch', 'dshMemeSend', 'dshMemeLearn', 'getSelfImage', 'personProfile', 'crossGroup', 'ownerRelay', 'ownerGroupAccess', 'sendVoice'];
           if (body.tools && typeof body.tools === 'object') {
             merged.tools = { ...(current.tools ?? {}), ...body.tools };
             for (const k of toolFlags) {
@@ -4947,6 +5097,7 @@ async function main() {
             dshMemeLearn: 'qq_dshmeme_learn',
             getSelfImage: 'qq_get_self_image',
             sendVoice: 'qq_send_voice / qq_list_voices',
+            ttsSpeak: 'qq_speak',
             personProfile: 'qq_get_person / qq_note_person',
             crossGroup: 'qq_cross_group_query',
             ownerRelay: 'qq_ask_group_session',
@@ -5014,6 +5165,11 @@ async function main() {
             dshMeme: memeBackend() === 'dshmeme' && cfg.socialV2?.dshMeme?.enabled !== false ? {
               enabled: true,
               hint: '用 qq_dshmeme_search(query/tag) 搜 dsh-meme 图库，qq_dshmeme_send(memeId) 发；QQ 不要写 [表情:] 标记。'
+            } : { enabled: false },
+            tts: ttsEnabled() ? {
+              enabled: true,
+              maxChars: ttsCfg().maxChars,
+              hint: '需要语音时用 qq_speak(text)；语音条不能附带文字，文字请另发一条。'
             } : { enabled: false },
             // 语音库摘要：让 AI 一开始就知道有哪些语音可发（真发之前用 qq_list_voices 看详情）。
             voices: cfg.socialV2?.voice?.enabled === false ? { enabled: false } : {
@@ -6544,6 +6700,111 @@ async function main() {
               audioProcessing: sent.audioProcessing,
               volume: sent.volume,
               loudness: sent.loudness
+            });
+          } catch (error) {
+            sendJson({ ok: false, error: error?.message ?? String(error) }, 500);
+          }
+          return;
+        }
+
+        // ── 本地 TTS（GPT-SoVITS）：文字 → 语音条 ────────────────────────────
+        if (req.method === 'GET' && url.pathname === '/api/tts/status') {
+          const t = ttsCfg();
+          sendJson({
+            ok: true,
+            enabled: t.enabled,
+            configured: ttsEnabled(),
+            apiUrl: t.apiUrl,
+            refAudio: t.refAudioPath ? path.basename(t.refAudioPath) : '',
+            promptLang: t.promptLang,
+            textLang: t.textLang,
+            maxChars: t.maxChars,
+            maxSeconds: t.maxSeconds
+          });
+          return;
+        }
+
+        if (req.method === 'POST' && url.pathname === '/api/tts/preview') {
+          const body = await readBody();
+          const value = String(body.text ?? '').trim();
+          const t = ttsCfg();
+          if (!ttsEnabled()) { sendJson({ ok: false, error: 'TTS 未启用或未配置参考音频/参考文本' }, 403); return; }
+          if (!value) { sendJson({ ok: false, error: 'text 不能为空' }, 400); return; }
+          if (value.length > t.maxChars) { sendJson({ ok: false, error: `text 过长（${value.length} > ${t.maxChars}）` }, 400); return; }
+          const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qq-tts-preview-'));
+          const file = path.join(dir, 'preview.wav');
+          try {
+            const synth = await getTtsClient().synthesize(value, { textLang: t.textLang, speedFactor: t.speedFactor, timeoutMs: t.timeoutMs });
+            fs.writeFileSync(file, synth.buffer);
+            let previewBuffer = synth.buffer;
+            let processed = null;
+            if (t.normalize) {
+              processed = await processAudioVolume(file, {
+                normalize: true,
+                loudness: t.loudness,
+                ffmpegPath: voiceCfg().ffmpegPath
+              });
+              if (processed.converted) previewBuffer = fs.readFileSync(processed.path);
+            }
+            try {
+              const info = await inspectAudio(file, { maxBytes: t.maxBytes, maxSeconds: t.maxSeconds });
+              if (!info.ok) { sendJson({ ok: false, error: info.error }, 400); return; }
+              sendJson({
+                ok: true,
+                mimeType: synth.mimeType,
+                dataBase64: previewBuffer.toString('base64'),
+                bytes: previewBuffer.length,
+                duration: info.duration,
+                detail: describeAudio(info),
+                normalized: processed?.converted === true
+              });
+            } finally {
+              if (processed?.converted) cleanupTemp(processed.path, true);
+            }
+          } catch (error) {
+            sendJson({ ok: false, error: error?.message ?? String(error) }, 500);
+          } finally {
+            try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+          }
+          return;
+        }
+
+        if (req.method === 'POST' && url.pathname === '/api/socialV2/tts') {
+          const body = await readBody();
+          const token = String(body.token ?? req.headers['x-agent-token'] ?? '').trim();
+          const key = String(body.key ?? body.target ?? '').trim();
+          if (!ttsEnabled()) { sendJson({ ok: false, error: 'TTS 语音功能已关闭或未配置' }, 403); return; }
+          if (!key) { sendJson({ ok: false, error: 'key 不能为空（格式 group:群号 或 private:QQ号）' }, 400); return; }
+          if (currentMode !== 'reserved2') { sendJson({ ok: false, error: '该接口仅 reserved2 模式可用' }, 403); return; }
+          if (!token) { sendJson({ ok: false, error: 'reserved2 模式发送必须携带 agent token' }, 403); return; }
+          if (!agentTokenOk(key, token)) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
+          if (!v2ToolEnabled('ttsSpeak')) { sendJson({ ok: false, error: '工具未启用：qq_speak' }, 403); return; }
+          if (!v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
+          const keyMatch = /^(group|private):(\d+)$/.exec(key);
+          if (!keyMatch) { sendJson({ ok: false, error: 'key 格式应为 group:群号 或 private:QQ号' }, 400); return; }
+          const kind = keyMatch[1];
+          const id = Number(keyMatch[2]);
+          if (!Number.isFinite(id) || id <= 0 || !allowed(kind, id, cfg)) {
+            sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403);
+            return;
+          }
+          try {
+            const sent = await speakV2(key, body.text, {
+              verify: body.verify,
+              readback: body.readback === true,
+              audio: (body.volume !== undefined || body.normalize === true || body.loudness !== undefined)
+                ? { volume: body.volume, normalize: body.normalize === true, loudness: body.loudness }
+                : null
+            });
+            sendJson({
+              ok: true,
+              key,
+              messageId: sent.messageId,
+              chars: sent.chars,
+              detail: sent.detail,
+              verified: sent.verification?.confirmed === true,
+              readback: sent.readback,
+              warnings: sent.warnings
             });
           } catch (error) {
             sendJson({ ok: false, error: error?.message ?? String(error) }, 500);
@@ -10749,6 +11010,9 @@ async function main() {
     const dshMemeLine = memeBackend() === 'dshmeme' && cfg.socialV2?.dshMeme?.enabled !== false
       ? '【表情包】图库由 dsh-meme 管理：用 qq_dshmeme_search(query/tag) 按描述或情绪找图，按 caption 判断贴合度；挑中后用 qq_dshmeme_send(memeId) 发；QQ 会话不要用 Web 端 send_meme 的 [表情:描述] 标记。一条消息只能一张，不能附带文字；文字单独 qq_send_message / qq_reply。普通闲聊约 3~5 轮一张，热闹时可更密但别刷屏；没有合适的就换关键词或纯文字，别硬发。别人发的有意思的图可用 qq_dshmeme_learn(messageId, tag, caption) 收进图库。\n\n'
       : '';
+    const ttsLine = ttsEnabled()
+      ? '【语音】想用声音说话时用 qq_speak(text) 生成语音条，不要调用 qq_send_voice（那是语音库里的旧音频）。一条语音不能附带文字；想说话的内容先用 qq_send_message/qq_reply 单独发一条，再单独发语音，或只发语音。普通闲聊偶尔用，别每条都发，也别连续发；语音条生成需要时间，短句优先。\n\n'
+      : '';
     const stickerLine = memeBackend() !== 'qq' ? '' : (stickerCfg.enabled !== false && stickerCfg.includeInPrompt !== false
       ? `${buildStickerStrategyHint()}\n${buildStickerContext(stickerEntries, stickerCfg.promptMaxStickers ?? 8)}\n\n`
       : '');
@@ -10786,7 +11050,7 @@ async function main() {
     const identityLine = selfIdentityTextV2();
     const initialPromptText = reason === 'bootstrap' ? formatInitialPromptV2(key) : '';
     const initialPromptLine = initialPromptText ? `${initialPromptText}\n\n` : '';
-    const base = identityLine + tokenLine + initialPromptLine + antiAiLine + proactiveLine + astrbotMemeLine + packNoticeLine + dshMemeLine + stickerLine + replyLine + statusLine + wakeLine + memoryLine + peopleLine + participationLine + preSleepLine;
+    const base = identityLine + tokenLine + initialPromptLine + antiAiLine + proactiveLine + astrbotMemeLine + packNoticeLine + dshMemeLine + ttsLine + stickerLine + replyLine + statusLine + wakeLine + memoryLine + peopleLine + participationLine + preSleepLine;
     if (reason === 'bootstrap') {
       return `${base}【引导唤醒】你已接入 QQ 会话 ${key}。\n当前是二代仿真模式：你的文本输出不会自动发送到 QQ，所有发言必须通过工具完成。\n请先调用 qq_get_prompt 查看推荐值、可用工具和状态；有待回应的消息先按首回复节奏处理，最后才用 qq_set_wake_config 设置你希望如何被唤醒。`;
     }

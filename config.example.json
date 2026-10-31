@@ -159,7 +159,8 @@
       "memesPackDownload": true,
       "memesCollect": true,
       "memesSend": true,
-      "memesImage": true
+      "memesImage": true,
+      "ttsSpeak": true
     },
     "ownerRelay": {
       "maxPerHour": 10,
@@ -313,6 +314,23 @@
         "maxPerMinute": 3,
         "maxPerHour": 20
       }
+    },
+    "tts": {
+      "enabled": false,
+      "apiUrl": "http://127.0.0.1:9880",
+      "refAudioPath": "",
+      "promptText": "",
+      "promptLang": "zh",
+      "textLang": "zh",
+      "speedFactor": 1,
+      "maxChars": 200,
+      "timeoutMs": 120000,
+      "maxBytes": 20971520,
+      "maxSeconds": 60,
+      "defaultVolume": 1,
+      "loudness": "normal",
+      "autoReadback": true,
+      "normalize": true
     }
   },
   "webSearch": {

@@ -17,6 +17,15 @@
 3. AI 只能发送语音库里的文件：不接受任意本地路径、URL 或 base64（防止提示注入把本机文件当语音外发）。
    时长、体积、频率另有独立上限（`socialV2.voice.maxSeconds / maxBytes / maxPerMinute / maxPerHour`）。
 
+### GPT-SoVITS 文字转语音（可选）
+
+如果本机部署了 GPT-SoVITS，可让 AI 用 `qq_speak(text)` 把文字合成成语音条，而不是只发语音库里的旧音频：
+
+1. GPT-SoVITS 的 `api_v2.py` 监听 `http://127.0.0.1:9880`。
+2. 在 `config.json` 的 `socialV2.tts` 填 `enabled=true`、`refAudioPath`、`promptText`、`promptLang`，并打开 `socialV2.tools.ttsSpeak=true`。
+3. 控制台「二代仿真 → 本地 TTS（GPT-SoVITS）」可以改参数并试听；试听只返回音频，不发到 QQ。
+4. 重启 DSH 后 `qq_speak` 才出现在工具表。语音条不能附带文字，文字请另发。
+
 ### 独立发语音工具（可选）
 
 `voice-tool/` 是从桥接拆出来的独立工具，放在仓库**上一级**目录（`../voice-tool/`），不随本仓库发布：

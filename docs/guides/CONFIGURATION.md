@@ -96,6 +96,26 @@ AI **收藏**群友的表情、**发送**收藏表情时，桥接会先自己下
 
 三套数据完全隔离，不互相导入。控制台「二代仿真 → 表情链路」保存后，桥接立即按新链路校验接口；MCP 工具清单在 **重启 DSH** 后才会隐藏其它链路。
 
+## `socialV2.tts` —— 本地 GPT-SoVITS 语音合成
+
+AI 用 `qq_speak(text)` 把文字交给本机 GPT-SoVITS（`/tts`）合成 WAV，再走现有 `record` 语音链路；`qq_send_voice` 仍然只发语音库里已有的音频，两者不是一套。
+
+| 字段 | 默认 | 说明 |
+| --- | --- | --- |
+| `enabled` | `false` | 是否注册 `qq_speak` / 允许 TTS 接口 |
+| `apiUrl` | `http://127.0.0.1:9880` | 只接受回环地址 |
+| `refAudioPath` | `''` | GPT-SoVITS API 所在机器上的参考音频绝对路径 |
+| `promptText` | `''` | 参考音频里说的原话，必须完全一致 |
+| `promptLang` | `zh` | 参考音频语言 |
+| `textLang` | `zh` | 合成文本语言 |
+| `speedFactor` | `1` | 语速 |
+| `maxChars` | `200` | 单条语音最多字数 |
+| `timeoutMs` | `120000` | `/tts` 超时 |
+| `maxBytes` / `maxSeconds` | 20MiB / 60 | 音频大小/时长上限 |
+| `defaultVolume` / `loudness` / `normalize` | `1` / `normal` / `true` | 发送前的音量/响度处理；`normalize` 默认开，避免 TTS 原始音量过轻 |
+
+当前部署实例（达妮娅 v2ProPlus）的 live 配置填的是本机 Dania 参考音频；控制台「二代仿真 → 本地 TTS（GPT-SoVITS）」可以直接改并试听（试听不会发到 QQ）。
+
 ## `socialV2.memes` —— AstrBot 本地图库 / 远程包
 
 默认目录 `state/memes/`；AI 可收聊天图、按描述/情绪检索本地，也可检索 AstrBot 社区索引的「包」（描述 + 封面）后异步下载。字段：`enabled` / `dir` / `remoteUrl` / `maxBytes` / `maxEntries` / `promptMax` / `packMaxImages` / `packConcurrency` / `packNotify`。
