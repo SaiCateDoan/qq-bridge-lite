@@ -385,9 +385,10 @@ test('页面：选择目录收到迁移提醒时，先建议「去迁移」（�
 
 test('控制中心：本地 TTS 的设置与进程托管界面存在', () => {
   const html = fs.readFileSync(path.join(root, 'public', 'control-center.html'), 'utf8');
-  for (const id of ['ttsStart', 'ttsStop', 'ttsDir', 'ttsEnabled', 'ttsRefAudio', 'ttsPromptText', 'ttsPreviewBtn']) {
+  for (const id of ['tab-tts', 'panel-tts', 'ttsStart', 'ttsStop', 'ttsDir', 'ttsEnabled', 'ttsRefAudio', 'ttsPromptText', 'ttsPreviewBtn']) {
     assert.ok(html.includes(`id="${id}"`), `缺少 TTS 界面元素 ${id}`);
   }
+  assert.match(html, /aria-controls="panel-tts"/);
   assert.match(html, /\/api\/tts\/start/);
   assert.match(html, /\/api\/tts\/config/);
   assert.ok(!fs.readFileSync(path.join(root, 'public', 'console.html'), 'utf8').includes('v2TtsEnabled'), '桥接控制台不应再保留 TTS 设置');

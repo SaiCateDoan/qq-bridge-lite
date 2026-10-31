@@ -173,6 +173,9 @@
   <button class="bigtab" role="tab" id="tab-platform" aria-controls="panel-platform" aria-selected="false" tabindex="-1">
     <span class="dot" id="tabPlatformDot"></span>接口平台 <span class="st" id="tabPlatformSt">—</span><span class="alert" id="tabPlatformAlert" hidden></span>
   </button>
+  <button class="bigtab" role="tab" id="tab-tts" aria-controls="panel-tts" aria-selected="false" tabindex="-1">
+    <span class="dot" id="tabTtsDot"></span>本地 TTS <span class="st" id="tabTtsSt">—</span>
+  </button>
 </nav>
 <div id="banners"></div>
 
@@ -209,6 +212,10 @@
       </form>
     </section>
 
+  </section>
+
+  <!-- ── 本地 TTS ─────────────────────────────────────────── -->
+  <section class="tabpanel" id="panel-tts" role="tabpanel" aria-labelledby="tab-tts" hidden>
     <section class="card" aria-labelledby="ttsTitle" style="margin-top:14px">
       <div class="card-head">
         <span class="dot" id="ttsDot"></span>
@@ -784,7 +791,7 @@
     $(panel).addEventListener('cc-hide', () => logs.forEach((l) => l.saveScroll()));
     $(panel).addEventListener('cc-show', () => requestAnimationFrame(() => logs.forEach((l) => l.restoreScroll())));
   }
-  mainTabs = makeTabs(['tab-bridge', 'tab-platform'], 'tab', (id) => { alerts[id === 'tab-bridge' ? 'bridge' : 'platform'] = 0; renderAlerts(); });
+  mainTabs = makeTabs(['tab-bridge', 'tab-platform', 'tab-tts'], 'tab', (id) => { if (id === 'tab-bridge') alerts.bridge = 0; else if (id === 'tab-platform') alerts.platform = 0; renderAlerts(); });
   platformTabs = makeTabs(['ptab-overview', 'ptab-instances', 'ptab-accounts', 'ptab-logs', 'ptab-settings'], 'ptab', (id) => { if (id === 'ptab-logs') { plLogUnseen = 0; renderAlerts(); } });
 
   // ── 状态 ──
@@ -834,6 +841,8 @@
     setDot($('ttsDot'), run ? (t.reachable ? 'on' : 'warn') : (ext ? 'warn' : 'off'));
     $('ttsState').textContent = run ? (t.reachable ? '运行中' : '启动中') : (ext ? '外部运行' : '未启动');
     $('ttsPort').textContent = '端口 ' + (t.port || 9880);
+    setDot($('tabTtsDot'), run ? (t.reachable ? 'on' : 'warn') : (ext ? 'warn' : 'off'));
+    $('tabTtsSt').textContent = run ? (t.reachable ? '运行中' : '启动中') : (ext ? '外部运行' : '未启动');
     $('ttsStart').disabled = run || ext;
     $('ttsStop').disabled = !run;
     if (!$('ttsDir').matches(':focus')) $('ttsDir').value = t.dir || '';

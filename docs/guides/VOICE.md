@@ -23,7 +23,7 @@
 
 1. GPT-SoVITS 的 `api_v2.py` 监听 `http://127.0.0.1:9880`。
 2. 在 `config.json` 的 `socialV2.tts` 填 `enabled=true`、`refAudioPath`、`promptText`、`promptLang`，并打开 `socialV2.tools.ttsSpeak=true`。
-3. 控制中心 **3099 → 桥接 → 本地 TTS（GPT-SoVITS）** 可以改参数、启动/停止 GPT-SoVITS 并试听；试听只返回音频，不发到 QQ。
+3. 控制中心 **3099 的「本地 TTS」标签** 可以改参数、启动/停止 GPT-SoVITS 并试听；试听只返回音频，不发到 QQ。
 4. 重启 DSH 后 `qq_speak` 才出现在工具表。语音条不能附带文字，文字请另发。
 
 ### 独立发语音工具（可选）

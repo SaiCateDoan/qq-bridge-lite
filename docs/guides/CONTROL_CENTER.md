@@ -75,7 +75,7 @@
 
 ## 本地 TTS（GPT-SoVITS）
 
-控制中心「桥接」标签里有「本地 TTS（GPT-SoVITS）」卡片：
+控制中心顶部的 **本地 TTS** 标签（与「桥接」「接口平台」同级）：
 
 - 选择 GPT-SoVITS 目录（含 `start-api.ps1` 或 `api_v2.py`），点「启动 GPT-SoVITS」；控制中心按 `start-api.ps1` 托管进程，停止/退出控制中心时会一并停止它。
 - 可以配置 API 地址、参考音频/原话、语言、语速、字数、超时、音量和响度归一，点「保存 TTS 配置」写入桥接的 `socialV2.tts`。

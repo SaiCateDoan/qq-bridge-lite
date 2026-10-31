@@ -123,7 +123,7 @@ Then use the control center as described above.
 **AI voice is disabled by default** (`socialV2.voice.enabled` and `tools.sendVoice` default to `false`): put audio into `audio/`, then enable it in the console.
 The standalone tool lives in `../voice-tool/`: `node voice-cli.mjs` / `node voice-gui.mjs`.
 
-Local GPT-SoVITS is configured and started in the **3099 control center → Bridge → Local TTS**; the AI uses `qq_speak` to synthesise and send a voice message. It is separate from the audio library. See [docs/guides/VOICE.md](docs/guides/VOICE.md).
+Local GPT-SoVITS is configured and started on the **Local TTS tab in the 3099 control center**; the AI uses `qq_speak` to synthesise and send a voice message. It is separate from the audio library. See [docs/guides/VOICE.md](docs/guides/VOICE.md).
 
 ## Tests
 

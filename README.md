@@ -123,7 +123,7 @@ node scripts/setup-dsh.mjs
 **AI 发语音默认关闭**（`socialV2.voice.enabled` 与 `tools.sendVoice` 默认 `false`）：先把音频放进 `audio/`，再到控制台打开开关。
 独立发语音工具在仓库上一级 `../voice-tool/`：`node voice-cli.mjs` / `node voice-gui.mjs`，也可以双击工作区的「发语音-图形界面.cmd」。
 
-本地 GPT-SoVITS 在控制中心 **3099 → 桥接 → 本地 TTS（GPT-SoVITS）** 配置并启停；AI 用 `qq_speak` 合成并发送语音条，和语音库是两套。详细说明见 [docs/guides/VOICE.md](docs/guides/VOICE.md)。
+本地 GPT-SoVITS 在控制中心 **3099 的「本地 TTS」标签** 配置并启停；AI 用 `qq_speak` 合成并发送语音条，和语音库是两套。详细说明见 [docs/guides/VOICE.md](docs/guides/VOICE.md)。
 
 ## 测试
 
