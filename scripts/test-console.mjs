@@ -35,9 +35,12 @@ const ok = (name, cond, extra = '') => {
 const page = await fetch(BASE + '/', { headers: authHeaders });
 const html = await page.text();
 ok('页面加载', page.status === 200 && html.includes('白名单 / 管理员') && html.includes('QQ 提示词') && html.includes('测试发送'), `长度 ${html.length}`);
+ok('dsh-meme 联动页', html.includes('id="dshMemeStatus"') && html.includes('id="dshMemePanelLink"') && html.includes('data-v2-tool="dshMemeSearch"'), '状态/面板/工具开关');
 
 // 2. QQ 提示词（唯一一套）
-let r = await api('/api/preset/sim-prompt');
+let r = await api('/api/dsh-meme/status');
+ok('dsh-meme 状态接口', r.body.ok === true && typeof r.body.total === 'number', JSON.stringify({ ok: r.body.ok, total: r.body.total, error: r.body.error }));
+r = await api('/api/preset/sim-prompt');
 ok('提示词读取', r.body.ok === true && typeof r.body.content === 'string' && r.body.content.length > 500, `共 ${r.body.chars} 字符`);
 ok('提示词状态是 qq-chat-v2', r.body.status?.preset === 'qq-chat-v2', JSON.stringify(r.body.status));
 ok('提示词默认快照可用', typeof r.body.defaultContent === 'string' && r.body.defaultContent.length > 500);

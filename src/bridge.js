@@ -23,6 +23,7 @@ import { looksLikeUnfinished } from './v2-wait.js';
 import { compactModelMessage, describeAge } from './qq-model-view.js';
 import { safeFetchBuffer, looksLikeImageBuffer } from './safe-fetch.js';
 import { hasImageCodec, prepareImage } from './media-compress.js';
+import { DshMemeClient } from './dsh-meme-client.js';
 import { stickerMaxBytes } from './lib/sticker-limits.mjs';
 import { AUDIO_EXTS, cleanupTemp, describeAudio, formatBytes, formatDuration, inspectAudio, listAudioFiles, parseTargetKey, processAudioVolume, resolveAudioProcessing, resolveAudioSource, safeJoinLibrary } from './send-voice-lib.js';
 import { discoverSnowLumaConnection, persistSnowLumaEndpoint, persistToken } from './snowluma-conn.js';
@@ -561,6 +562,9 @@ function loadConfig() {
         setStickerRemark: false,
         stickerNote: true,
         collectSticker: true,
+        dshMemeSearch: true,
+        dshMemeSend: true,
+        dshMemeLearn: true,
         getSelfImage: true,
         personProfile: true,
         crossGroup: true,
@@ -651,6 +655,11 @@ function loadConfig() {
       initialPromptMaxChars: 2000,
       // 图片/表情（含动图）的数量与体积上限。QQ 的动图表情常见 1~4MB，
       // 旧的 4MB 单条总上限会误伤；这里默认 8MB，仍受 DSH 的 20MB/64MP 限制约束。
+      dshMeme: {
+        enabled: true,
+        baseUrl: '',
+        maxBytes: 10 * 1024 * 1024
+      },
       media: {
         maxBytes: 8 * 1024 * 1024,
         maxPixels: 64_000_000,
@@ -692,6 +701,9 @@ function loadConfig() {
     setStickerRemark: false,
     stickerNote: true,
     collectSticker: true,
+    dshMemeSearch: true,
+    dshMemeSend: true,
+    dshMemeLearn: true,
     getSelfImage: true,
     // v0.3.0：人物档案（按 QQ 号）/ 跨群受控查询
     personProfile: true,
@@ -726,6 +738,13 @@ function loadConfig() {
     ffmpegPath: '',
     autoReadback: true,
     ...(cfg.socialV2?.voice ?? {})
+  };
+
+  cfg.socialV2.dshMeme = {
+    enabled: true,
+    baseUrl: '',
+    maxBytes: 10 * 1024 * 1024,
+    ...(cfg.socialV2?.dshMeme ?? {})
   };
 
   // socialV2.sticker.collect 也需要深度合并，避免旧配置缺失 collect 子项时丢默认值。
@@ -1800,6 +1819,62 @@ async function main() {
     return { entry: updated.entry, messageId: data?.message_id ?? null };
   }
 
+  // 发送一张已经拿到字节的图片（dsh-meme 图库或其他本地来源）。
+  // 与 QQ 收藏表情不同：不依赖 CDN、不查 stickerEntries；仍然走统一的发送闸门/队列。
+  async function sendImageBufferV2(key, buffer, options = {}) {
+    if (!Buffer.isBuffer(buffer) || !buffer.length) throw new Error('图片字节为空');
+    const assertSendAllowed = captureSendGuard(key);
+    const [kind, id] = key.split(':');
+    const segments = [];
+    const replyToMessageId = options.replyToMessageId;
+    const atUserId = options.atUserId;
+    if (replyToMessageId !== undefined && replyToMessageId !== null && String(replyToMessageId).trim() !== '') {
+      const rid = String(replyToMessageId).trim();
+      if (!/^-?[1-9]\d*$/.test(rid)) throw new Error('replyToMessageId 必须是非零整数（消息 id 可能为负数）');
+      segments.push({ type: 'reply', data: { id: rid } });
+    }
+    if (atUserId !== undefined && atUserId !== null && String(atUserId).trim() !== '') {
+      const at = String(atUserId).trim();
+      if (!/^\d+$/.test(at)) throw new Error('atUserId 必须是正整数 QQ 号，且不能为 all');
+      segments.push({ type: 'at', data: { qq: at } });
+    }
+    segments.push({ type: 'image', data: { file: 'base64://' + buffer.toString('base64') } });
+    const action = kind === 'private' ? 'send_private_msg' : 'send_group_msg';
+    const params = kind === 'private' ? { user_id: Number(id), message: segments } : { group_id: Number(id), message: segments };
+    const httpUrl = String(cfg.snowluma?.httpUrl || 'http://127.0.0.1:3000').replace(/\/+$/, '');
+    let sendResolve;
+    let sendReject;
+    const sendResult = new Promise((resolve, reject) => {
+      sendResolve = resolve;
+      sendReject = reject;
+    });
+    sendChain = sendChain.then(async () => {
+      try {
+        await sleep(randInt(600, 1600));
+        assertSendAllowed();
+        const res = await fetch(`${httpUrl}/${action}`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            ...(cfg.snowluma?.accessToken ? { authorization: `Bearer ${cfg.snowluma.accessToken}` } : {})
+          },
+          body: JSON.stringify(params),
+          signal: AbortSignal.timeout(15000)
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok || body.status !== 'ok' || body.retcode !== 0) {
+          const hint = res.status === 426 ? '（HTTP 426：snowluma.httpUrl 可能指向了 WebSocket 端口）' : '';
+          throw new Error(`OneBot ${action} 失败: ${body.wording || body.retcode || res.status}${hint}`);
+        }
+        sendResolve(body.data);
+      } catch (error) {
+        sendReject(error);
+      }
+    });
+    const data = await sendResult;
+    return { messageId: data?.message_id ?? null };
+  }
+
   // 更新本地 AI 认知（含义/标签/用法）。
   function applyStickerNoteV2(stickerId, note, tags, usage) {
     const patch = {};
@@ -2254,6 +2329,20 @@ async function main() {
     cfg.dsh.baseUrl = ep.url;
     dshBaseUrlAuto = ep.auto;
   }
+  // dsh-meme 图库：通过 DSH Web 的 /dsh-memes-api 使用；DSH 重启换端口后跟着更新。
+  let dshMemeClient = null;
+  function dshMemeBase() {
+    return String(cfg.socialV2?.dshMeme?.baseUrl || cfg.dsh.baseUrl || '').trim();
+  }
+  function getDshMemeClient() {
+    if (cfg.socialV2?.dshMeme?.enabled === false) throw new Error('dsh-meme 联动已关闭（socialV2.dshMeme.enabled=false）');
+    const base = dshMemeBase();
+    if (!base) throw new Error('DSH 地址尚未就绪，暂时无法连接 dsh-meme');
+    if (!dshMemeClient) dshMemeClient = new DshMemeClient({ baseUrl: base });
+    else dshMemeClient.setBaseUrl(base);
+    return dshMemeClient;
+  }
+
   const api = new NodeApiClient(cfg.dsh.baseUrl, undefined, {
     token: cfg.dsh.authToken,
     // true=用户在 config.json 里显式填的；false=从日志猜的。猜来的不优先于离线铸造。
@@ -2703,6 +2792,7 @@ async function main() {
         const ep = await resolveDshBaseUrl('', { timeoutMs: 600 });
         if (ep.reachable && api.setBaseUrl(ep.url)) {
           cfg.dsh.baseUrl = ep.url;
+          if (dshMemeClient && !cfg.socialV2?.dshMeme?.baseUrl) dshMemeClient.setBaseUrl(ep.url);
           log(`DSH 地址已变化，重新识别为 ${ep.url}${ep.discovered ? '（随机端口）' : ''}`);
           try { await api.settings.describe({}); ok = true; } catch (error) { lastErr = error; }
         }
@@ -3959,7 +4049,7 @@ async function main() {
           const current = fileV2 ?? ((cfg.socialV2 && typeof cfg.socialV2 === 'object') ? cfg.socialV2 : {});
           const merged = { ...current, ...body };
           // 子对象必须是非 null 对象；null/数组/基本类型会覆盖默认值导致工具开关被绕过，这里直接保留当前值。
-          for (const sub of ['tools', 'wake', 'send', 'wait', 'proactive', 'sticker', 'feedback', 'context']) {
+          for (const sub of ['tools', 'wake', 'send', 'wait', 'proactive', 'sticker', 'dshMeme', 'feedback', 'context']) {
             if (body[sub] !== undefined && (body[sub] === null || typeof body[sub] !== 'object' || Array.isArray(body[sub]))) {
               merged[sub] = current[sub] ?? {};
             }
@@ -3969,7 +4059,7 @@ async function main() {
             merged.autoReplyCheckMs = Number.isFinite(n) ? Math.max(1000, Math.round(n)) : (current.autoReplyCheckMs ?? 30000);
           }
           // tools：只接受布尔开关
-          const toolFlags = ['getPrompt', 'getUnread', 'getRecent', 'socialState', 'sendGroup', 'sendPrivate', 'reply', 'sendBurst', 'sendMessage', 'waitMessages', 'feedback', 'getMyRecent', 'getMessageDetail', 'getActiveMembers', 'getGroupMembers', 'setWakeConfig', 'markRead', 'memory', 'slangQuery', 'slangSubmit', 'getImages', 'getForwardMsg', 'sendPoke', 'listStickers', 'getStickerImage', 'sendSticker', 'setStickerRemark', 'stickerNote', 'collectSticker', 'getSelfImage', 'personProfile', 'crossGroup', 'ownerRelay', 'ownerGroupAccess', 'sendVoice'];
+          const toolFlags = ['getPrompt', 'getUnread', 'getRecent', 'socialState', 'sendGroup', 'sendPrivate', 'reply', 'sendBurst', 'sendMessage', 'waitMessages', 'feedback', 'getMyRecent', 'getMessageDetail', 'getActiveMembers', 'getGroupMembers', 'setWakeConfig', 'markRead', 'memory', 'slangQuery', 'slangSubmit', 'getImages', 'getForwardMsg', 'sendPoke', 'listStickers', 'getStickerImage', 'sendSticker', 'setStickerRemark', 'stickerNote', 'collectSticker', 'dshMemeSearch', 'dshMemeSend', 'dshMemeLearn', 'getSelfImage', 'personProfile', 'crossGroup', 'ownerRelay', 'ownerGroupAccess', 'sendVoice'];
           if (body.tools && typeof body.tools === 'object') {
             merged.tools = { ...(current.tools ?? {}), ...body.tools };
             for (const k of toolFlags) {
@@ -4233,6 +4323,9 @@ async function main() {
             setStickerRemark: 'qq_set_sticker_remark',
             stickerNote: 'qq_sticker_note',
             collectSticker: 'qq_collect_sticker',
+            dshMemeSearch: 'qq_search_memes',
+            dshMemeSend: 'qq_send_meme',
+            dshMemeLearn: 'qq_learn_meme',
             getSelfImage: 'qq_get_self_image',
             sendVoice: 'qq_send_voice / qq_list_voices',
             personProfile: 'qq_get_person / qq_note_person',
@@ -4275,11 +4368,15 @@ async function main() {
               entries: confirmedSlangListV2(),
               block: buildSlangContext(slangEntries, cfg.slang?.injectMax ?? 8)
             },
-            stickers: {
+            stickers: cfg.socialV2?.dshMeme?.enabled !== false ? { enabled: false } : {
               enabled: cfg.socialV2?.sticker?.enabled !== false,
               total: stickerEntries.length,
               context: cfg.socialV2?.sticker?.includeInPrompt !== false ? buildStickerContext(stickerEntries, cfg.socialV2?.sticker?.promptMaxStickers ?? 8) : '',
               strategy: cfg.socialV2?.sticker?.includeInPrompt !== false ? buildStickerStrategyHint() : ''
+            },
+            dshMeme: cfg.socialV2?.dshMeme?.enabled === false ? { enabled: false } : {
+              enabled: true,
+              hint: '用 qq_search_memes(query/tag) 搜 dsh-meme 图库，qq_send_meme(memeId) 发；QQ 不要写 [表情:] 标记。'
             },
             // 语音库摘要：让 AI 一开始就知道有哪些语音可发（真发之前用 qq_list_voices 看详情）。
             voices: cfg.socialV2?.voice?.enabled === false ? { enabled: false } : {
@@ -4983,6 +5080,174 @@ async function main() {
             if (st.sendTimes.length > 500) st.sendTimes = st.sendTimes.slice(-500);
             log(`[reserved2] 工具拍一拍失败 ${key}:`, error?.message ?? error);
             sendJson({ ok: false, error: `拍一拍失败：${error?.message ?? error}` }, error?.statusCode ?? 500);
+          }
+          return;
+        }
+        if (req.method === 'GET' && url.pathname === '/api/dsh-meme/status') {
+          const base = dshMemeBase();
+          const panelUrl = base ? base.replace(/\/+$/, '') + '/memes-panel' : '';
+          if (cfg.socialV2?.dshMeme?.enabled === false) { sendJson({ ok: false, enabled: false, baseUrl: base, panelUrl, error: 'dsh-meme 联动已关闭' }); return; }
+          try {
+            const lib = await getDshMemeClient().listAll();
+            sendJson({ ok: true, enabled: true, baseUrl: base, panelUrl, packs: lib.packs, enabledPacks: lib.enabled, total: lib.memes.length });
+          } catch (error) {
+            sendJson({ ok: false, enabled: true, baseUrl: base, panelUrl, error: String(error?.message ?? error) });
+          }
+          return;
+        }
+        // ── dsh-meme 图库联动（搜索 / 发送 / 学习）──────────────────────────
+        if (req.method === 'GET' && url.pathname === '/api/socialV2/memes/search') {
+          if (cfg.socialV2?.dshMeme?.enabled === false) { sendJson({ ok: false, error: 'dsh-meme 联动已关闭' }, 403); return; }
+          const key = String(url.searchParams.get('key') ?? '').trim();
+          const query = String(url.searchParams.get('query') ?? '').trim();
+          const tag = String(url.searchParams.get('tag') ?? '').trim();
+          const limit = Math.min(20, Math.max(1, Number(url.searchParams.get('limit')) || 8));
+          if (req.headers['x-agent-token'] && !agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
+          if (req.headers['x-agent-token'] && !v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
+          if (req.headers['x-agent-token'] && !v2ToolEnabled('dshMemeSearch')) { sendJson({ ok: false, error: '工具未启用：qq_search_memes' }, 403); return; }
+          try {
+            const rows = await getDshMemeClient().search({ query, tag, limit });
+            sendJson({
+              ok: true,
+              key,
+              memes: rows.map((m) => ({ id: m.id, pack: m.pack, packName: m.packName, tag: m.tag, caption: m.caption, keywords: m.keywords }))
+            });
+          } catch (error) {
+            sendJson({ ok: false, error: `搜索 dsh-meme 失败：${error?.message ?? error}` }, 503);
+          }
+          return;
+        }
+        if (req.method === 'POST' && url.pathname === '/api/socialV2/memes/send') {
+          if (cfg.socialV2?.dshMeme?.enabled === false) { sendJson({ ok: false, error: 'dsh-meme 联动已关闭' }, 403); return; }
+          const body = await readBody();
+          const key = String(body.key ?? '').trim();
+          const memeId = String(body.memeId ?? '').trim();
+          const replyToMessageId = body.replyToMessageId;
+          const atUserId = body.atUserId ?? null;
+          if (!key || !memeId) { sendJson({ ok: false, error: 'key 和 memeId 不能为空' }, 400); return; }
+          if (req.headers['x-agent-token'] && !agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
+          if (req.headers['x-agent-token'] && !v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
+          if (req.headers['x-agent-token'] && !v2ToolEnabled('dshMemeSend')) { sendJson({ ok: false, error: '工具未启用：qq_send_meme' }, 403); return; }
+          if (currentMode !== 'reserved2') { sendJson({ ok: false, error: '该接口仅 reserved2 模式可用' }, 403); return; }
+          if (!req.headers['x-agent-token']) { sendJson({ ok: false, error: 'reserved2 模式发送必须携带 agent token' }, 403); return; }
+          const keyMatch = /^(group|private):(\d+)$/.exec(key);
+          if (!keyMatch) { sendJson({ ok: false, error: 'key 格式应为 group:群号 或 private:QQ号' }, 400); return; }
+          const kind = keyMatch[1];
+          const id = Number(keyMatch[2]);
+          if (!Number.isFinite(id) || id <= 0 || !allowed(kind, id, cfg)) {
+            sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403);
+            return;
+          }
+          if (kind === 'private' && atUserId) { sendJson({ ok: false, error: '私聊不需要 @' }, 400); return; }
+          if (replyToMessageId !== undefined && replyToMessageId !== null && String(replyToMessageId).trim() !== '' && !/^-?[1-9]\d*$/.test(String(replyToMessageId).trim())) {
+            sendJson({ ok: false, error: 'replyToMessageId 必须是非零整数（消息 id 可能为负数）' }, 400);
+            return;
+          }
+          let quotedInfo = null;
+          let actualReplyToMessageId = replyToMessageId;
+          if (replyToMessageId !== undefined && replyToMessageId !== null && String(replyToMessageId).trim() !== '') {
+            const stForReply = getSocialV2State(key);
+            const resolved = await resolveReplyTargetV2(stForReply, kind, id, String(replyToMessageId).trim());
+            if (!resolved) { sendJson({ ok: false, error: '无法解析被引用消息，请确认 message id 正确且属于当前会话' }, 400); return; }
+            quotedInfo = resolved.info;
+            actualReplyToMessageId = resolved.messageId;
+          }
+          const sendCfg = cfg.socialV2?.send ?? {};
+          const now = Date.now();
+          try {
+            const st = getSocialV2State(key);
+            const maxPerMinute = Number(sendCfg.maxSendPerMinute) || 0;
+            const maxPerHour = Number(sendCfg.maxSendPerHour) || 0;
+            const recentMinute = (st.sendTimes || []).filter((t) => now - t < 60000).length;
+            const recentHour = (st.sendTimes || []).filter((t) => now - t < 3600000).length;
+            if ((maxPerMinute > 0 && recentMinute + 1 > maxPerMinute) || (maxPerHour > 0 && recentHour + 1 > maxPerHour)) {
+              sendJson({ ok: false, error: '发送频率超限，请稍后再试' }, 429);
+              return;
+            }
+            st.sendTimes.push(now);
+            if (st.sendTimes.length > 500) st.sendTimes = st.sendTimes.slice(-500);
+            const got = await getDshMemeClient().download(memeId, { maxBytes: cfg.socialV2?.dshMeme?.maxBytes || 10 * 1024 * 1024 });
+            const sent = await sendImageBufferV2(key, got.buffer, { replyToMessageId: actualReplyToMessageId, atUserId });
+            const label = got.meme.caption || got.meme.tag || got.meme.id;
+            st.recentMessages.push({
+              messageId: sent.messageId ? String(sent.messageId) : null,
+              sender: '我',
+              text: truncateText(`[表情包:${label}]`, 200),
+              plain: truncateText(`[表情包:${label}]`, 200),
+              quoteTargetIsSelf: false,
+              isOwner: true,
+              ownerLabel: '我',
+              isSelf: true,
+              media: [],
+              hasMedia: false,
+              forwardIds: [],
+              hasForward: false,
+              meme: { id: got.meme.id, pack: got.meme.pack, tag: got.meme.tag },
+              time: Date.now()
+            });
+            const recentLimit = Number(cfg.socialV2?.context?.recentLimit) || 100;
+            if (st.recentMessages.length > recentLimit) st.recentMessages.splice(0, st.recentMessages.length - recentLimit);
+            st.lastAiReplyAt = now;
+            st.lastActionAt = now;
+            st.wakeConfig.noActionCount = 0;
+            st.preSleepWaitSatisfiedAt = 0;
+            st.preSleepWaitObservedAt = 0;
+            st.preSleepWaitAccumMs = 0;
+            saveSocialV2State();
+            scheduleReplyCheckV2(key);
+            log(`[dsh-meme] 工具发送表情 ${key}: ${got.meme.id}`);
+            appendActivity(`${key} [dsh-meme] 工具发送表情：${label}`);
+            sendJson({ ok: true, key, meme: { id: got.meme.id, pack: got.meme.pack, packName: got.meme.packName, tag: got.meme.tag, caption: got.meme.caption }, sent: 1, failed: 0, quoted: quotedInfo });
+          } catch (error) {
+            const st = getSocialV2State(key);
+            const idx = st.sendTimes.indexOf(now);
+            if (idx >= 0) st.sendTimes.splice(idx, 1);
+            if (st.sendTimes.length > 500) st.sendTimes = st.sendTimes.slice(-500);
+            saveSocialV2State();
+            log(`[dsh-meme] 工具发送表情失败 ${key}: ${error?.message ?? error}`);
+            sendJson({ ok: false, error: `发送表情失败：${error?.message ?? error}` }, 500);
+          }
+          return;
+        }
+        if (req.method === 'POST' && url.pathname === '/api/socialV2/memes/learn') {
+          if (cfg.socialV2?.dshMeme?.enabled === false) { sendJson({ ok: false, error: 'dsh-meme 联动已关闭' }, 403); return; }
+          const body = await readBody();
+          const key = String(body.key ?? '').trim();
+          const messageRef = String(body.messageId ?? body.seq ?? '').trim();
+          const tag = String(body.tag ?? 'daily').trim() || 'daily';
+          const caption = String(body.caption ?? body.note ?? '').trim();
+          const keywords = String(body.keywords ?? '').trim();
+          if (!key || !messageRef) { sendJson({ ok: false, error: 'key 和 messageId/seq 不能为空' }, 400); return; }
+          if (req.headers['x-agent-token'] && !agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
+          if (req.headers['x-agent-token'] && !v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
+          if (req.headers['x-agent-token'] && !v2ToolEnabled('dshMemeLearn')) { sendJson({ ok: false, error: '工具未启用：qq_learn_meme' }, 403); return; }
+          try {
+            const st = getSocialV2State(key);
+            const found = (st.recentMessages || []).find((m) => m && (String(m.seq) === String(messageRef) || (m.messageId && String(m.messageId) === String(messageRef))));
+            if (!found) { sendJson({ ok: false, error: '找不到这条消息，请确认 messageId/seq 有效且属于当前会话' }, 404); return; }
+            if (found.isSelf) { sendJson({ ok: false, error: '不能学习自己发的表情' }, 400); return; }
+            const media = (Array.isArray(found.media) ? found.media : [])[0];
+            if (!media) { sendJson({ ok: false, error: '这条消息没有可学习的图片/表情' }, 400); return; }
+            let img = null;
+            if (media.kind === 'face') {
+              const face = await fetchFaceMedia(media, { maxBytes: 8 * 1024 * 1024 });
+              if (face?.buffer) img = { buffer: face.buffer, mimeType: face.mimeType || 'image/png' };
+            } else if (media.kind === 'image' || media.kind === 'sticker') {
+              img = await fetchOneBotImage(media, { maxBytes: 8 * 1024 * 1024, compress: false });
+            }
+            if (!img?.buffer) { sendJson({ ok: false, error: '无法获取这张图片的原始字节' }, 400); return; }
+            const ext = (img.mimeType === 'image/png' ? '.png' : img.mimeType === 'image/gif' ? '.gif' : img.mimeType === 'image/webp' ? '.webp' : '.jpg');
+            const result = await getDshMemeClient().upload({
+              buffer: img.buffer,
+              fileName: `qq-${Date.now()}${ext}`,
+              tag,
+              caption,
+              keywords
+            });
+            log(`[dsh-meme] 学习聊天图片 ${key}: ${tag} ${caption || ''}`);
+            sendJson({ ok: true, key, meme: result.meme || null, tag, message: result.message || '' });
+          } catch (error) {
+            sendJson({ ok: false, error: `学习表情失败：${error?.message ?? error}` }, 500);
           }
           return;
         }
@@ -9389,9 +9654,12 @@ async function main() {
     const participationLine = participationText ? `${participationText}\n\n` : '';
     const antiAiLine = '【别像客服】不用有求必应式地捧场、列清单或总结对话；少用“一绝/真管用/保证/绝对”这类词；能一条说完就一条。\n\n';
     const stickerCfg = cfg.socialV2?.sticker ?? {};
-    const stickerLine = stickerCfg.enabled !== false && stickerCfg.includeInPrompt !== false
-      ? `${buildStickerStrategyHint()}\n${buildStickerContext(stickerEntries, stickerCfg.promptMaxStickers ?? 8)}\n\n`
+    const dshMemeLine = cfg.socialV2?.dshMeme?.enabled !== false
+      ? '【表情包】图库由 dsh-meme 管理：用 qq_search_memes(query/tag) 按描述或情绪找图，按 caption 判断贴合度；挑中后用 qq_send_meme(memeId) 发；QQ 会话不要用 Web 端 send_meme 的 [表情:描述] 标记。一条消息只能一张，不能附带文字；文字单独 qq_send_message / qq_reply。普通闲聊约 3~5 轮一张，热闹时可更密但别刷屏；没有合适的就换关键词或纯文字，别硬发。别人发的有意思的图可用 qq_learn_meme(messageId, tag, caption) 收进图库。\n\n'
       : '';
+    const stickerLine = cfg.socialV2?.dshMeme?.enabled !== false ? '' : (stickerCfg.enabled !== false && stickerCfg.includeInPrompt !== false
+      ? `${buildStickerStrategyHint()}\n${buildStickerContext(stickerEntries, stickerCfg.promptMaxStickers ?? 8)}\n\n`
+      : '');
     const preSleepMs = Math.max(0, Number(cfg.socialV2?.wake?.preSleepWaitMs) || 300000);
     const proactiveLine = '【积极性】不要习惯性潜水：群里有你能接的话题就主动参与，偶尔插一句别人的话题也很正常；只有确实没话可说、对方已明确结束、或长时间没人说话时才潜水。\n\n';
     const replyTiming = replyTimingV2(st);
@@ -9426,7 +9694,7 @@ async function main() {
     const identityLine = selfIdentityTextV2();
     const initialPromptText = reason === 'bootstrap' ? formatInitialPromptV2(key) : '';
     const initialPromptLine = initialPromptText ? `${initialPromptText}\n\n` : '';
-    const base = identityLine + tokenLine + initialPromptLine + antiAiLine + proactiveLine + stickerLine + replyLine + statusLine + wakeLine + memoryLine + peopleLine + participationLine + preSleepLine;
+    const base = identityLine + tokenLine + initialPromptLine + antiAiLine + proactiveLine + dshMemeLine + stickerLine + replyLine + statusLine + wakeLine + memoryLine + peopleLine + participationLine + preSleepLine;
     if (reason === 'bootstrap') {
       return `${base}【引导唤醒】你已接入 QQ 会话 ${key}。\n当前是二代仿真模式：你的文本输出不会自动发送到 QQ，所有发言必须通过工具完成。\n请先调用 qq_get_prompt 查看推荐值、可用工具和状态；有待回应的消息先按首回复节奏处理，最后才用 qq_set_wake_config 设置你希望如何被唤醒。`;
     }

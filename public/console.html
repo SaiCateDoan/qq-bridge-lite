@@ -1933,6 +1933,9 @@ button:active:not(:disabled) {
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="getStickerImage"> <span><b>qq_get_sticker_image</b><span class="meta">看图理解没有备注的收藏表情</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="sendSticker"> <span><b>qq_send_sticker</b><span class="meta">发送收藏表情（一条消息只能一张，不能带文字）</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="collectSticker"> <span><b>qq_collect_sticker</b><span class="meta">AI 偶尔收藏别人发的表情并写简短备注</span></span></label>
+        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="dshMemeSearch"> <span><b>qq_search_memes</b><span class="meta">搜索 dsh-meme 图库（描述/情绪）</span></span></label>
+        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="dshMemeSend"> <span><b>qq_send_meme</b><span class="meta">从 dsh-meme 图库发一张图</span></span></label>
+        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="dshMemeLearn"> <span><b>qq_learn_meme</b><span class="meta">把聊天图片收进 dsh-meme 图库</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="personProfile"> <span><b>qq_get_person / qq_note_person</b><span class="meta">按 QQ 号查看/记录人物档案（按共享策略过滤可见范围）</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="requestMode"> <span><b>qq_request_mode_change</b><span class="meta">只在管理员私聊里登记模式切换申请；不能执行、不能确认</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="crossGroup"> <span><b>qq_cross_group_query</b><span class="meta">跨群受控查询（还需 crossGroup.enabled 与链接授权）</span></span></label>
@@ -2098,6 +2101,13 @@ button:active:not(:disabled) {
         <span class="meta" style="flex:2">AI 收藏别人表情时写的简短备注长度上限。</span>
       </div>
 
+      </div></details>
+<details class="settings-group"><summary>dsh-meme 图库联动（推荐）</summary><div class="settings-content">
+      <div id="dshMemeStatus" class="meta">正在连接 dsh-meme…</div>
+      <div class="row" style="margin-top:8px">
+        <a id="dshMemePanelLink" class="button small" target="_blank" rel="noopener" hidden>打开 dsh-meme 图库面板 ↗</a>
+        <span class="meta" style="flex:2">AI 用 <code>qq_search_memes</code> 搜图、<code>qq_send_meme</code> 发图、<code>qq_learn_meme</code> 收图；图库管理在 DSH 设置→表情包。</span>
+      </div>
       </div></details>
 <details class="settings-group"><summary>上下文参数（recent / unread / contextWindow）</summary><div class="settings-content">
       <div class="row">
@@ -2929,6 +2939,27 @@ document.getElementById('aiNotifySend').addEventListener('click', async () => {
 let voiceEntries = [];
 let voiceLibraryLoaded = false;
 // 只在首次进入/手动刷新时拉取：语音库会逐个 ffprobe 探测时长，放进 3 秒轮询会白白压网关。
+async function loadDshMemeStatus() {
+  const box = document.getElementById('dshMemeStatus');
+  const link = document.getElementById('dshMemePanelLink');
+  if (!box) return;
+  try {
+    const r = await api('/api/dsh-meme/status');
+    if (r.panelUrl && link) { link.href = r.panelUrl; link.hidden = false; }
+    if (r.ok) {
+      const names = (r.packs || []).map((p) => p.name + '（' + p.count + '）').join('、');
+      box.textContent = '已连接 · ' + (r.total || 0) + ' 张 · ' + (names || '无可用图库');
+      box.className = 'meta ok';
+    } else {
+      box.textContent = '未连接：' + (r.error || 'dsh-meme 不可用');
+      box.className = 'meta err';
+    }
+  } catch (error) {
+    box.textContent = '读取 dsh-meme 状态失败：' + (error?.message || error);
+    box.className = 'meta err';
+  }
+}
+
 async function loadVoiceLibrary(force) {
   if (voiceLibraryLoaded && force !== true) return;
   const box = document.getElementById('voiceList');
@@ -4122,6 +4153,7 @@ function setConsolePage(page, { updateHash = true, focus = false, target = '' } 
   closeConsoleSearch();
   // 语音库按需加载：进入二代仿真页时才探测（避免每次开控制台都压网关）。
   if (page === 'social-v2' && typeof loadVoiceLibrary === 'function') loadVoiceLibrary();
+  if (page === 'social-v2' && typeof loadDshMemeStatus === 'function') loadDshMemeStatus();
   if (focus) {
     document.getElementById('mainContent').focus({ preventScroll: true });
     document.getElementById(target || 'mainContent')?.scrollIntoView({ block: 'start', behavior: 'instant' });

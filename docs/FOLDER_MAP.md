@@ -21,7 +21,7 @@ DSH/                         ← 工作区根（不是仓库根）
 
 | 目录 | 作用 | 能不能删/动 |
 | --- | --- | --- |
-| `src/` | **桥接内核**：主程序、DSH 客户端、三个 MCP server、黑话/表情/语音共享库 | 不能动。`bridge.js` 是主程序（约 10,730 行，QSH 计划拆分）；`media-compress.js` 负责 sharp/WebP 大图压缩与动图抽帧；`voice-core.js` 与 `snowluma-conn.js` 是**独立工具也在用的单一实现**。**目录里只应有 `.js`**：曾经的 `bridge.js.bak-*` 会污染全局搜索并看起来像 module，2026-09-20 已移出（见下） |
+| `src/` | **桥接内核**：主程序、DSH 客户端、三个 MCP server、黑话/表情/语音共享库 | 不能动。`bridge.js` 是主程序（约 10,730 行，QSH 计划拆分）；`media-compress.js` 负责 sharp/WebP 大图压缩与动图抽帧，`dsh-meme-client.js` 通过 DSH Web 使用 dsh-meme 图库；`voice-core.js` 与 `snowluma-conn.js` 是**独立工具也在用的单一实现**。**目录里只应有 `.js`**：曾经的 `bridge.js.bak-*` 会污染全局搜索并看起来像 module，2026-09-20 已移出（见下） |
 | `src/social/` `src/lib/` `src/bridge-extensions.js` | 人物库与入群事件、群规/owner 托付、版本化 JSON 存储；`bridge.js` 只接线 | 业务规则都在这里，配套离线测试 `scripts/test-continuity.mjs` / `test-owner-relay.mjs` / `test-group-rules.mjs` |
 | `src/launcher/` `public/control-center.html` `control-center.bat` `control-center-hidden.vbs` | **v0.4.0 控制中心**：托管桥接与 SnowLuma 子进程的本地网页（见 guides/CONTROL_CENTER.md） | 配套测试 `scripts/test-control-center.mjs` |
 | `interface-platform/`（独立子程序：自己的 `package.json`、测试和 `state/`） | **接口平台**（M1）：统一接入实例/账号/事件/发送，QQ 经 SnowLuma / NapCat 连接器；OneBot v11 兼容入口供桥接过渡使用。本仓库只经 HTTP 接口与它通信（见它的 README.md、docs/CONTRACT.md、docs/MILESTONES.md） | 自带测试 `interface-platform/test/`；`scripts/test-platform.mjs` 一并跑（缺失即失败）；它的 `state/`（令牌、实例配置）不入库 |

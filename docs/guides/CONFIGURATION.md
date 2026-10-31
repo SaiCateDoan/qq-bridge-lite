@@ -86,6 +86,24 @@ AI **收藏**群友的表情、**发送**收藏表情时，桥接会先自己下
 - **不影响图片识别**：把聊天图片 / 表情图交给模型看（含 `qq_get_sticker_image`）用的是另一个配置 `socialV2.media.maxBytes`（上游 r4 引入，默认 8MB，范围 256KB～20MB；同组还有 `maxPixels` 默认 64MP、`maxCount` 默认 5 张）。
 - 直连 SnowLuma（不经接口平台）时，SnowLuma 自身对单条消息的大小限制没有实测过；遇到发送失败可以先调小这个值。
 
+## `socialV2.dshMeme` —— 与 DSH 的 dsh-meme 图库联动
+
+qq-bridge 不自己维护表情图库，直接使用 DSH 插件 **dsh-meme** 的图库、开关和元数据。桥接通过 DSH Web 的 `/dsh-memes-api`（只回环）读取候选，再从 `/dsh-memes/<pack>/<path>` 取原图发给 QQ。
+
+| 字段 | 默认 | 说明 |
+| --- | --- | --- |
+| `enabled` | true | 联动开关；关闭后 3 个工具和状态接口都不可用 |
+| `baseUrl` | 空 | 留空 = 用桥接已识别的 DSH 地址；一般不用填 |
+| `maxBytes` | 10485760（10MB） | 单张图片发送上限（dsh-meme 自身入库上限是 8MB） |
+
+AI 工具：
+
+- `qq_search_memes(query?, tag?, limit?)`：按描述/关键词/情绪桶搜 dsh-meme 图库；返回候选 id、图库、caption、tag。
+- `qq_send_meme(memeId, replyToMessageId?, atUserId?)`：把候选下载成字节，走原有 QQ 白名单/限流/发送队列；一条一张，不带文字。
+- `qq_learn_meme(messageId, tag?, caption?, keywords?)`：把当前会话的图片上传到 dsh-meme 的「我的收藏」。
+
+图库管理、启用哪些图库、发图尺寸等仍在 **DSH 设置 → 表情包**；qq-bridge 控制台「二代仿真」里会显示连接状态和「打开 dsh-meme 图库面板」。
+
 ## `socialV2.media` —— 图片压缩与动图抽帧（默认开启，需要 `sharp`）
 
 聊天图片不再因为过大直接丢掉：桥接用 `sharp`（libvips）解码，静态图超限时按 Lanczos3 重采样并压成 WebP；动图会均匀抽帧成多张静态 WebP（含首帧/末帧），让模型能看到变化过程。

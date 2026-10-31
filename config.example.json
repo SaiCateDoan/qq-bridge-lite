@@ -149,7 +149,10 @@
       "crossGroup": true,
       "sendVoice": false,
       "ownerRelay": false,
-      "ownerGroupAccess": false
+      "ownerGroupAccess": false,
+      "dshMemeSearch": true,
+      "dshMemeSend": true,
+      "dshMemeLearn": true
     },
     "ownerRelay": {
       "maxPerHour": 10,
@@ -283,6 +286,11 @@
       "frameLongEdge": 1024,
       "frameBytes": 1048576,
       "maxImageParts": 8
+    },
+    "dshMeme": {
+      "enabled": true,
+      "baseUrl": "",
+      "maxBytes": 10485760
     }
   },
   "webSearch": {

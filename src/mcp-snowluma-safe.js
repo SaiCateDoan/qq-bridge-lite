@@ -314,6 +314,9 @@ const TOOL_CONFIG_FLAGS = {
   qq_get_sticker_image: 'getStickerImage',
   qq_send_sticker: 'sendSticker',
   qq_collect_sticker: 'collectSticker',
+  qq_search_memes: 'dshMemeSearch',
+  qq_send_meme: 'dshMemeSend',
+  qq_learn_meme: 'dshMemeLearn',
   qq_get_self_image: 'getSelfImage',
   qq_sticker_note: 'stickerNote',
   qq_set_sticker_remark: 'setStickerRemark',
@@ -1078,6 +1081,86 @@ if (cfg.socialV2?.sticker?.enabled !== false && cfg.socialV2?.tools?.collectStic
         return { content: [{ type: 'text', text: serializeModelData(data) }] };
       } catch (error) {
         return { content: [{ type: 'text', text: `收藏表情失败：${error?.message ?? error}` }], isError: true };
+      }
+    }
+  );
+}
+
+// ── dsh-meme 图库联动（搜索 / 发送 / 学习） ────────────────────────────────
+if (cfg.socialV2?.dshMeme?.enabled !== false && cfg.socialV2?.tools?.dshMemeSearch !== false) {
+  server.tool(
+    'qq_search_memes',
+    '搜索 dsh-meme 图库（DSH 设置→表情包里的图库），不是 QQ 收藏表情。按 query 搜描述/关键词/文件名，或按 tag 情绪桶（happy/angry/sad/shy/confused/daily）抽图。返回候选 id、所属图库、描述、tag；挑中后用 qq_send_meme(memeId) 发。没有合适的就换关键词或纯文字，别硬发。',
+    {
+      key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
+      token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
+      query: z.string().optional().describe('搜索词，例如「猫 比心」「无语 摆烂」'),
+      tag: z.string().optional().describe('情绪桶：happy/angry/sad/shy/confused/daily'),
+      limit: z.number().optional().describe('最多返回几张，默认 8，最大 20')
+    },
+    async ({ key, token, query, tag, limit }) => {
+      try {
+        const q = new URLSearchParams({ key });
+        if (query) q.set('query', String(query));
+        if (tag) q.set('tag', String(tag));
+        if (limit != null) q.set('limit', String(limit));
+        const data = await agentApi('/api/socialV2/memes/search?' + q.toString(), { headers: { 'x-agent-token': token } });
+        return { content: [{ type: 'text', text: serializeModelData(data) }] };
+      } catch (error) {
+        return { content: [{ type: 'text', text: '搜索 dsh-meme 失败：' + (error?.message ?? error) }], isError: true };
+      }
+    }
+  );
+}
+
+if (cfg.socialV2?.dshMeme?.enabled !== false && cfg.socialV2?.tools?.dshMemeSend !== false) {
+  server.tool(
+    'qq_send_meme',
+    '从 dsh-meme 图库发一张图到当前 QQ 会话。memeId 用 qq_search_memes 返回的 id。一条消息只能一张，不能在同一气泡附带文字；想说的话先用 qq_send_message/qq_reply 单独发。可传 replyToMessageId / atUserId（群聊）。',
+    {
+      key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
+      token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
+      memeId: z.string().describe('qq_search_memes 返回的 id'),
+      replyToMessageId: z.union([z.number(), z.string()]).optional().describe('要引用/回复的消息 id（非零整数，可为负数，可选）'),
+      atUserId: z.union([z.number(), z.string()]).optional().describe('要 @ 的群成员 QQ 号（群聊中可选，私聊不可用）')
+    },
+    async ({ key, token, memeId, replyToMessageId, atUserId }) => {
+      try {
+        const data = await agentApi('/api/socialV2/memes/send', {
+          method: 'POST',
+          headers: { 'x-agent-token': token },
+          body: JSON.stringify({ key, memeId: String(memeId), replyToMessageId, atUserId })
+        });
+        return { content: [{ type: 'text', text: serializeModelData(data) }] };
+      } catch (error) {
+        return { content: [{ type: 'text', text: '发送 dsh-meme 表情失败：' + (error?.message ?? error) }], isError: true };
+      }
+    }
+  );
+}
+
+if (cfg.socialV2?.dshMeme?.enabled !== false && cfg.socialV2?.tools?.dshMemeLearn !== false) {
+  server.tool(
+    'qq_learn_meme',
+    '把当前会话里别人发的一张图片/表情收进 dsh-meme 的「我的收藏」图库。messageId 用 qq_get_recent_messages / qq_get_unread_messages 返回的 messageId 或 seq；可给出 tag、caption、keywords，方便以后检索。不要频繁收图。',
+    {
+      key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
+      token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
+      messageId: z.union([z.number(), z.string()]).describe('要学习的消息 messageId 或 seq'),
+      tag: z.string().optional().describe('分类，默认 daily；建议 happy/angry/sad/shy/confused/daily'),
+      caption: z.string().optional().describe('一句话描述，方便按描述搜到'),
+      keywords: z.string().optional().describe('空格分隔关键词')
+    },
+    async ({ key, token, messageId, tag, caption, keywords }) => {
+      try {
+        const data = await agentApi('/api/socialV2/memes/learn', {
+          method: 'POST',
+          headers: { 'x-agent-token': token },
+          body: JSON.stringify({ key, messageId: String(messageId), tag, caption, keywords })
+        });
+        return { content: [{ type: 'text', text: serializeModelData(data) }] };
+      } catch (error) {
+        return { content: [{ type: 'text', text: '学习 dsh-meme 表情失败：' + (error?.message ?? error) }], isError: true };
       }
     }
   );

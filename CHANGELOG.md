@@ -3,6 +3,17 @@
 本仓库（qq-bridge-enhanced）基于上游 [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge) `v0.2.0-r3`。
 上游更早的版本历史见 [docs/guides/DSH_020_ADAPTATION.md](docs/guides/DSH_020_ADAPTATION.md) 与上游 Release 页面。
 
+## v1.0.4 —— 2026-10-31
+
+**与 DSH dsh-meme 插件联动**：qq-bridge 不再自己维护表情图库，直接通过 DSH Web 的 `/dsh-memes-api` 使用 dsh-meme 的图库/开关/描述。
+
+### 变化
+- 新增 `src/dsh-meme-client.js`：回环 HTTP 读取 dsh-meme 的启用图库、按描述/情绪桶检索、下载原图、上传到「我的收藏」；尊重 `~/.dsh/dsh-expression.json` 的 `enabledPacks`。
+- 新增 MCP 工具 `qq_search_memes` / `qq_send_meme` / `qq_learn_meme`；发送走原有白名单、限流和发送队列，图片字节从 dsh-meme 取，不依赖 QQ 收藏。
+- QQ 控制台「二代仿真」新增 dsh-meme 连接状态和「打开 dsh-meme 图库面板」；工具开关可单独关闭。
+- 唤醒提示词优先引导 dsh-meme 工具；旧的 QQ 收藏工具保留，但新图库流程不再使用它们。
+- 新增 `test-dsh-meme`（本地 HTTP 夹具）；audit 55/55。
+
 ## v1.0.3 —— 2026-10-21
 
 在 v1.0.2 的基础上的修复版本：**切换 agent 等级不再失忆**；引用一条（较早的）合并转发时，AI 能看到并打开里面的内容，这条消息也不再卡 30 秒；普通图片不再被误当成表情。

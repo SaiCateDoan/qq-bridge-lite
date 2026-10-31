@@ -108,6 +108,23 @@ await test('malformed HTTP request targets return 400 without hanging', async (h
   } catch (error) { failures++; console.error('FAIL safe sticker sending:', error.message); }
   finally { await h.close(); }
 }
+{
+  const image = Buffer.from('89504e470d0a1a0a00000000', 'hex');
+  let body;
+  const h = await bridgeHarness({ globals: {
+    fetch: async (_url, init) => {
+      body = JSON.parse(init.body);
+      return { ok: true, json: async () => ({ status: 'ok', retcode: 0, data: { message_id: 9 } }) };
+    },
+  } });
+  try {
+    const sent = await h.sendImageBufferV2('group:456', image);
+    assert.equal(sent.messageId, 9);
+    assert.equal(body.message.find((part) => part.type === 'image').data.file, 'base64://' + image.toString('base64'));
+    console.log('PASS dsh-meme image bytes go through the shared send gate as base64, not a local path/URL');
+  } catch (error) { failures++; console.error('FAIL safe meme image sending:', error.message); }
+  finally { await h.close(); }
+}
 // ── 语音发送（AI 通道）的安全边界 ────────────────────────────────────────────
 // 语音比文本更"重"（真的会说话、不可撤回），所以这里逐条钉住它的闸门：
 // 来源只能是语音库、白名单必须命中、限流要生效、文件名审计要拦住本机路径。
